@@ -335,11 +335,6 @@ void HTTPServer::handleClient(SOCKET clientSocket)
             int sent = send(clientSocket, response.toUTF8(), response.length(), 0);
             OutputDebugString(("FAUNA: 101 Response sent, bytes: " + juce::String(sent) + "\n").toUTF8());
             
-            u_long mode = 1;
-            ioctlsocket(clientSocket, FIONBIO, &mode);
-            OutputDebugString("FAUNA: Set socket to non-blocking mode\n");
-            Sleep(200);
-            OutputDebugString("FAUNA: Done waiting\n");
             
             
             AudioClient client;
@@ -361,6 +356,7 @@ void HTTPServer::handleClient(SOCKET clientSocket)
             juce::ScopedLock lock(clientsLock);
             audioClients.add(client);
             OutputDebugString("FAUNA: Client added to list\n");
+            
         }
         else
         {
