@@ -19,7 +19,8 @@ void AudioStreamer::prepareToPlay(double sampleRate, int maximumExpectedSamplesP
 
     writePosition = 0;
     readPosition = 0;
-    currentLevel = 0.0f;
+    currentLevelLeft = 0.0f;
+    currentLevelRight = 0.0f;
 }
 
 void AudioStreamer::processBlock(juce::AudioBuffer<float>& buffer)
@@ -27,7 +28,8 @@ void AudioStreamer::processBlock(juce::AudioBuffer<float>& buffer)
     const int numSamples = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();
 
-    float maxLevel = 0.0f;
+    float maxLevelLeft = 0.0f;
+    float maxLevelRight = 0.0f;
 
     for (int ch = 0; ch < numChannels; ++ch)
     {
@@ -43,22 +45,28 @@ void AudioStreamer::processBlock(juce::AudioBuffer<float>& buffer)
                 float right = buffer.getSample(1, i);
                 circularBuffer.setSample(0, writeIdx, left);
                 circularBuffer.setSample(1, writeIdx, right);
+                
+                float absLeft = std::abs(left);
+                float absRight = std::abs(right);
+                if (absLeft > maxLevelLeft) maxLevelLeft = absLeft;
+                if (absRight > maxLevelRight) maxLevelRight = absRight;
             }
             else
             {
                 circularBuffer.setSample(0, writeIdx, channelData[i]);
                 circularBuffer.setSample(1, writeIdx, channelData[i]);
+                
+                float absSample = std::abs(channelData[i]);
+                if (absSample > maxLevelLeft) maxLevelLeft = absSample;
+                if (absSample > maxLevelRight) maxLevelRight = absSample;
             }
-
-            float sample = std::abs(channelData[i]);
-            if (sample > maxLevel)
-                maxLevel = sample;
 
             writePosition = (writeIdx + 1) % bufferSize;
         }
     }
 
-    currentLevel = maxLevel;
+    currentLevelLeft = juce::jmax(maxLevelLeft, currentLevelLeft * 0.85f);
+    currentLevelRight = juce::jmax(maxLevelRight, currentLevelRight * 0.85f);
 }
 
 int AudioStreamer::getAvailableSamples()
@@ -91,7 +99,17 @@ void AudioStreamer::consumeSamples(float* outputBuffer, int numSamples)
     }
 }
 
-float AudioStreamer::getCurrentLevel()
+float AudioStreamer::getCurrentLevel() const
 {
-    return currentLevel;
+    return (currentLevelLeft + currentLevelRight) * 0.5f;
+}
+
+float AudioStreamer::getCurrentLevelLeft() const
+{
+    return currentLevelLeft;
+}
+
+float AudioStreamer::getCurrentLevelRight() const
+{
+    return currentLevelRight;
 }

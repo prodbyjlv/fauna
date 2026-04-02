@@ -52,6 +52,9 @@ public:
     bool isServerRunning() const { return httpServer.isRunning(); }
     int getServerPort() const { return httpServer.getPort(); }
     int getConnectedClients() const { return httpServer.getConnectedClients(); }
+    float getLevelLeft() const { return audioStreamer.getCurrentLevelLeft(); }
+    float getLevelRight() const { return audioStreamer.getCurrentLevelRight(); }
+    bool isShuttingDown = false;
 
 private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FAUNAAudioProcessor)

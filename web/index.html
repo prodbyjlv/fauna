@@ -64,6 +64,17 @@
             margin-bottom: 20px;
         }
         .info-box p { margin: 5px 0; }
+        .start-btn {
+            padding: 15px 40px;
+            font-size: 1.2em;
+            background: #00d4ff;
+            color: #1a1a2e;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        .start-btn:hover { transform: scale(1.05); }
     </style>
 </head>
 <body>
@@ -74,7 +85,10 @@
         <div class="info-box">
             <p><strong>Server Status:</strong> <span id="serverStatus">Checking...</span></p>
             <p><strong>Connected Devices:</strong> <span id="deviceCount">0</span></p>
+            <p><strong>Audio:</strong> <span id="audioStatus">Click Start to begin</span></p>
         </div>
+        
+        <button class="start-btn" id="startBtn" onclick="startAudio()">START AUDIO</button>
         
         <div class="level-meter">
             <div class="level-bar" id="levelBar"></div>
@@ -87,6 +101,72 @@
 
     <script>
         var isMuted = false;
+        var ws = null;
+        var audioCtx = null;
+        var scriptNode = null;
+        var audioBuffer = [];
+        var started = false;
+        
+        function startAudio() {
+            if (started) return;
+            started = true;
+            
+            document.getElementById("startBtn").textContent = "Streaming...";
+            document.getElementById("audioStatus").textContent = "Connecting...";
+            
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            scriptNode = audioCtx.createScriptProcessor(4096, 0, 2);
+            scriptNode.onaudioprocess = function(e) {
+                var left = e.outputBuffer.getChannelData(0);
+                var right = e.outputBuffer.getChannelData(1);
+                
+                for (var i = 0; i < 4096; i++) {
+                    if (audioBuffer.length >= 2) {
+                        left[i] = audioBuffer.shift();
+                        right[i] = audioBuffer.shift();
+                    } else {
+                        left[i] = 0;
+                        right[i] = 0;
+                    }
+                }
+            };
+            scriptNode.connect(audioCtx.destination);
+            
+            ws = new WebSocket("ws://" + location.host);
+            
+            ws.binaryType = "arraybuffer";
+            
+            ws.onopen = function() {
+                document.getElementById("audioStatus").textContent = "Playing!";
+                document.getElementById("audioStatus").className = "connected";
+            };
+            
+            ws.onclose = function(e) {
+                document.getElementById("audioStatus").textContent = "Disconnected";
+                document.getElementById("audioStatus").style.color = "#ff4444";
+            };
+            
+            ws.onerror = function() {
+                document.getElementById("audioStatus").textContent = "Error";
+            };
+            
+            ws.onmessage = function(e) {
+                if (e.data instanceof ArrayBuffer) {
+                    var float32Data = new Float32Array(e.data);
+                    for (var i = 0; i < float32Data.length; i++) {
+                        audioBuffer.push(float32Data[i]);
+                    }
+                    
+                    var maxLevel = 0;
+                    for (var i = 0; i < Math.min(100, float32Data.length); i++) {
+                        var abs = Math.abs(float32Data[i]);
+                        if (abs > maxLevel) maxLevel = abs;
+                    }
+                    document.getElementById("levelBar").style.width = (maxLevel * 100) + "%";
+                }
+            };
+        }
         
         function updateStatus() {
             fetch("/status")
@@ -113,6 +193,10 @@
                 btn.className = "mute-btn unmuted";
             }
             document.getElementById("status").textContent = isMuted ? "Muted" : "Unmuted";
+            
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(isMuted ? "mute:true" : "mute:false");
+            }
         }
         
         updateStatus();

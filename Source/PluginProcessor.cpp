@@ -1,15 +1,11 @@
 /*
   ==============================================================================
-
-    This file contains the basic framework code for a JUCE plugin processor.
-
+    PluginProcessor.cpp - FAUNA Audio Streaming Plugin
   ==============================================================================
 */
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
-
-static const int AUDIO_BUFFER_SIZE = 4096;
 
 FAUNAAudioProcessor::FAUNAAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -18,7 +14,7 @@ FAUNAAudioProcessor::FAUNAAudioProcessor()
                       #if ! JucePlugin_IsSynth
                        .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                       #endif
-                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
+                       .withOutput ("Output",  juce::AudioChannelSet::stereo(), true)
                      #endif
                        )
 #endif
@@ -27,72 +23,23 @@ FAUNAAudioProcessor::FAUNAAudioProcessor()
 
 FAUNAAudioProcessor::~FAUNAAudioProcessor()
 {
+    isShuttingDown = true;
     httpServer.stop();
 }
 
-const juce::String FAUNAAudioProcessor::getName() const
-{
-    return JucePlugin_Name;
-}
+const juce::String FAUNAAudioProcessor::getName() const { return JucePlugin_Name; }
+bool FAUNAAudioProcessor::acceptsMidi() const { return false; }
+bool FAUNAAudioProcessor::producesMidi() const { return false; }
+bool FAUNAAudioProcessor::isMidiEffect() const { return false; }
+double FAUNAAudioProcessor::getTailLengthSeconds() const { return 0.0; }
+int FAUNAAudioProcessor::getNumPrograms() { return 1; }
+int FAUNAAudioProcessor::getCurrentProgram() { return 0; }
+void FAUNAAudioProcessor::setCurrentProgram(int) {}
+const juce::String FAUNAAudioProcessor::getProgramName(int) { return {}; }
+void FAUNAAudioProcessor::changeProgramName(int, const juce::String&) {}
 
-bool FAUNAAudioProcessor::acceptsMidi() const
+void FAUNAAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
-   #if JucePlugin_WantsMidiInput
-    return true;
-   #else
-    return false;
-   #endif
-}
-
-bool FAUNAAudioProcessor::producesMidi() const
-{
-   #if JucePlugin_ProducesMidiOutput
-    return true;
-   #else
-    return false;
-   #endif
-}
-
-bool FAUNAAudioProcessor::isMidiEffect() const
-{
-   #if JucePlugin_IsMidiEffect
-    return true;
-   #else
-    return false;
-   #endif
-}
-
-double FAUNAAudioProcessor::getTailLengthSeconds() const
-{
-    return 0.0;
-}
-
-int FAUNAAudioProcessor::getNumPrograms()
-{
-    return 1;
-}
-
-int FAUNAAudioProcessor::getCurrentProgram()
-{
-    return 0;
-}
-
-void FAUNAAudioProcessor::setCurrentProgram (int index)
-{
-}
-
-const juce::String FAUNAAudioProcessor::getProgramName (int index)
-{
-    return {};
-}
-
-void FAUNAAudioProcessor::changeProgramName (int index, const juce::String& newName)
-{
-}
-
-void FAUNAAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
-{
-    audioStreamer.prepareToPlay(sampleRate, samplesPerBlock);
     httpServer.start(8080);
 }
 
@@ -102,55 +49,66 @@ void FAUNAAudioProcessor::releaseResources()
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
-bool FAUNAAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool FAUNAAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
-  #if JucePlugin_IsMidiEffect
-    juce::ignoreUnused (layouts);
-    return true;
-  #else
     if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
      && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
         return false;
-
-   #if ! JucePlugin_IsSynth
     if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
         return false;
-   #endif
-
     return true;
-  #endif
 }
 #endif
 
-void FAUNAAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void FAUNAAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
+
+    // Clear any output channels that don't have input data
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
-
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
-        buffer.clear (i, 0, buffer.getNumSamples());
+        buffer.clear(i, 0, buffer.getNumSamples());
 
+    // Process audio for level metering
     audioStreamer.processBlock(buffer);
+
+    const int numSamples  = buffer.getNumSamples();
+    const int numChannels = buffer.getNumChannels();
+
+    // Interleave stereo audio into a flat float array [L0,R0, L1,R1, ...]
+    // This is exactly what the browser's Float32Array expects
+    juce::HeapBlock<float> interleaved(numSamples * 2);
+    float* out = interleaved.get();
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        float left  = buffer.getSample(0, i);
+        float right = (numChannels > 1) ? buffer.getSample(1, i) : left;
+
+        // Clamp to [-1, 1] to prevent WebSocket payload corruption
+        left  = juce::jlimit(-1.0f, 1.0f, left);
+        right = juce::jlimit(-1.0f, 1.0f, right);
+
+        out[i * 2]     = left;
+        out[i * 2 + 1] = right;
+    }
+
+    // Send to all connected WebSocket clients
+    // numSamples is per-channel count; broadcastAudio expects per-channel count
+    httpServer.writeAudioData(out, numSamples);
+    OutputDebugString(("FAUNA: processBlock sending " + juce::String(numSamples) + " samples\n").toUTF8());
 }
 
-bool FAUNAAudioProcessor::hasEditor() const
-{
-    return true;
-}
+bool FAUNAAudioProcessor::hasEditor() const { return true; }
 
 juce::AudioProcessorEditor* FAUNAAudioProcessor::createEditor()
 {
-    return new FAUNAAudioProcessorEditor (*this);
+    return new FAUNAAudioProcessorEditor(*this);
 }
 
-void FAUNAAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
-{
-}
-
-void FAUNAAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
-{
-}
+void FAUNAAudioProcessor::getStateInformation(juce::MemoryBlock& destData) {}
+void FAUNAAudioProcessor::setStateInformation(const void* data, int sizeInBytes) {}
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
