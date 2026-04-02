@@ -2,16 +2,17 @@
 
 ## Overview
 
-**Project FAUNA** is a VST3 audio plugin that streams DAW audio to mobile devices over WiFi, with remote mute control via webpage.
+**FAUNA** is a VST3 audio plugin that streams DAW audio to mobile devices over WiFi, with remote mute control via webpage.
 
 ---
 
 ## Features
 
 - Stream audio from DAW to mobile device
-- QR code display for easy URL access
-- Mute/unmute control via mobile webpage
 - Real-time audio streaming via WebSocket
+- Mute/unmute control via mobile webpage
+- Level meter visualization on mobile
+- Support for up to 2 simultaneous devices
 
 ---
 
@@ -24,6 +25,16 @@
 
 ---
 
+## Version History
+
+### v1.0.0 - Initial Release (April 2, 2026)
+
+**Status:** ✅ WORKING
+
+First functional version with audio streaming capability.
+
+---
+
 ## Implementation Status
 
 | Phase | Status |
@@ -31,12 +42,14 @@
 | Project Setup | ✅ |
 | Audio Engine | ✅ |
 | HTTP Server | ✅ |
-| WebSocket Connection | ✅ (fixed SHA-1 + base64) |
+| WebSocket Connection | ✅ |
 | Plugin UI | ✅ |
-| URL Display | ✅ (QR code removed) |
-| Mobile Webpage (status) | ✅ (HTTP polling) |
-| Mobile Webpage (audio) | ❌ (not implemented) |
-| Audio Streaming | ❌ (not implemented) |
+| URL Display | ✅ |
+| Mobile Webpage | ✅ |
+| Audio Streaming | ✅ |
+| Mute Control | ✅ |
+| Level Meter | ✅ |
+| QR Code | ❌ (not implemented) |
 
 ---
 
@@ -51,7 +64,7 @@ FAUNA/
 │   +-- AudioStreamer.cpp/h
 │   +-- WebServer.cpp/h
 +-- web/
-│   +-- index.html (mobile control page)
+│   +-- index.html
 +-- AGENTS.md
 ```
 
@@ -59,10 +72,11 @@ FAUNA/
 
 ## How to Use
 
-1. Load FAUNA in a DAW
+1. Load FAUNA in a DAW (FL Studio, etc.)
 2. Play audio in your DAW
-3. Open URL on your phone (http://IP:8080)
-4. Audio streams to your phone!
+3. Open URL on your phone: http://YOUR_IP:8080
+4. Click "START AUDIO" button
+5. Audio streams to your phone!
 
 ---
 
@@ -81,14 +95,9 @@ FAUNA/
 
 ---
 
-## Build Status
-**Last build:** April 2, 2026 - Successful
-
----
-
 ## Session History
 
-### April 2, 2026 - WebSocket Connection Fixed
+### April 2, 2026 - Session 1: WebSocket Connection Fixed
 
 **Problem:** Browser disconnected immediately after WebSocket handshake (error 1006).
 
@@ -117,32 +126,81 @@ Browser showed "CLOSE code:1006"
 
 ---
 
-## Next Steps (Priority Order)
+### April 2, 2026 - Session 2: Audio Streaming Implemented
 
-### 1. Implement Audio Streaming (HIGH PRIORITY)
-- Connect AudioStreamer to WebServer
-- Send audio data via WebSocket binary frames
-- Handle multiple clients (max 2)
+**Problem:** No audio was being streamed to mobile device - broadcastAudio() was empty.
 
-### 2. Update Mobile Webpage (HIGH PRIORITY)
-- Add WebSocket connection for audio
-- Add AudioContext / Web Audio API playback
-- Add mute/unmute toggle with WebSocket messaging
+**Issues Found:**
+1. PluginProcessor didn't send audio to WebServer
+2. WebServer.broadcastAudio() was empty - no implementation
+3. No audio retrieval mechanism from AudioStreamer
 
-### 3. Add Mute Control (MEDIUM PRIORITY)
-- Implement setMuteState() in WebServer
-- Send mute messages from webpage to plugin
+**Solution Applied:**
 
-### 4. Polish (LOW PRIORITY)
-- Add level meter visualization
-- Add connection status indicator
-- Consider adding back QR code
+1. **PluginProcessor.cpp** - Added audio sending after processBlock:
+   - Interleaves stereo audio [L0,R0, L1,R1, ...]
+   - Clamps values to [-1, 1] to prevent WebSocket corruption
+   - Calls httpServer.writeAudioData()
+
+2. **WebServer.cpp** - Implemented broadcastAudio():
+   - Sends binary WebSocket frames (opcode 0x02) to all connected clients
+   - Checks muted state - sends silence if muted
+   - Uses non-blocking sockets for audio streaming
+   - Large send buffer (256KB) for smooth streaming
+
+3. **Embedded HTML** - getHTMLPage() now serves full mobile page:
+   - WebSocket connection for audio
+   - AudioContext with scheduled buffer playback
+   - Level meter visualization
+   - Mute/unmute toggle button
+   - Server status display
+
+**Testing:**
+- ✅ Audio streams from FL Studio to phone
+- ✅ WebSocket connection works
+- ✅ Level meter responds to audio
+- ✅ Mute control functional
 
 ---
 
 ## Files Modified
 
-- `Source/WebServer.cpp` - Fixed SHA-1, base64, WebSocket handshake
+### Source/WebServer.cpp
+- Fixed SHA-1 implementation with correct padding
+- Fixed base64Encode with proper padding
+- Implemented broadcastAudio() for sending audio to clients
+- Added full embedded HTML page with audio streaming UI
+- Non-blocking sockets for audio streaming
+- Client limit (max 2)
+
+### Source/PluginProcessor.cpp
+- Added audio interleaving for WebSocket transmission
+- Added value clamping to prevent corruption
+- Added call to httpServer.writeAudioData()
+
+### web/index.html
+- Full mobile control page with WebSocket audio
+- AudioContext playback with buffer scheduling
+- Level meter visualization
+- Mute/unmute toggle
+
+---
+
+## Known Issues / Future Improvements
+
+1. **QR Code** - Not implemented yet - needed for easy distribution
+2. **Buffer underrun handling** - Could be improved for smoother playback
+3. **Latency adjustment** - Could add user-adjustable latency setting
+4. **Multiple device sync** - Currently each device plays independently
+
+---
+
+## Build Instructions
+
+1. Open FAUNA.jucer in Projucer
+2. Select Visual Studio 2022 (or your preferred IDE)
+3. Build in Release mode for better performance
+4. Copy FAUNA.vst3 to `C:\Program Files\Common Files\VST3\`
 
 ---
 
