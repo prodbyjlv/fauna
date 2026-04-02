@@ -297,6 +297,7 @@ void HTTPServer::handleClient(SOCKET clientSocket)
     {
         buffer[bytesReceived] = '\0';
         juce::String request(buffer);
+        OutputDebugString(("FAUNA: Full HTTP request:\n" + juce::String(buffer, bytesReceived) + "\n").toUTF8());
         OutputDebugString("FAUNA: HTTP request received, checking for WebSocket...\n");
         
         if (request.contains("Upgrade") && request.contains("websocket"))
@@ -327,10 +328,10 @@ void HTTPServer::handleClient(SOCKET clientSocket)
             response += "Upgrade: websocket\r\n";
             response += "Connection: Upgrade\r\n";
             response += "Sec-WebSocket-Accept: " + acceptKey + "\r\n";
-            response += "Sec-WebSocket-Version: 13\r\n";
             response += "\r\n";
             
             OutputDebugString("FAUNA: 101 Switching Protocols response ready to send\n");
+            OutputDebugString(("FAUNA: Full response:\n" + response + "\n").toUTF8());
             OutputDebugString("FAUNA: Sending 101 Switching Protocols response...\n");
             int sent = send(clientSocket, response.toUTF8(), response.length(), 0);
             OutputDebugString(("FAUNA: 101 Response sent, bytes: " + juce::String(sent) + "\n").toUTF8());
