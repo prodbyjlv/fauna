@@ -9,10 +9,10 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "AudioStreamer.h"
+#include "WebServer.h"
 
 //==============================================================================
-/**
-*/
 class FAUNAAudioProcessor  : public juce::AudioProcessor
 {
 public:
@@ -52,6 +52,13 @@ public:
     //==============================================================================
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
+
+    // FAUNA specific
+    AudioStreamer audioStreamer;
+    WebServer webServer;
+    bool isServerRunning() const { return webServer.isRunning(); }
+    int getServerPort() const { return webServer.getPort(); }
+    int getConnectedClients() const { return webServer.getConnectedClients(); }
 
 private:
     //==============================================================================
