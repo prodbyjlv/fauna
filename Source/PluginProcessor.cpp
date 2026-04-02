@@ -29,7 +29,6 @@ FAUNAAudioProcessor::~FAUNAAudioProcessor()
     webServer.stop();
 }
 
-//==============================================================================
 const juce::String FAUNAAudioProcessor::getName() const
 {
     return JucePlugin_Name;
@@ -90,7 +89,6 @@ void FAUNAAudioProcessor::changeProgramName (int index, const juce::String& newN
 {
 }
 
-//==============================================================================
 void FAUNAAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     audioStreamer.prepareToPlay(sampleRate, samplesPerBlock);
@@ -135,7 +133,6 @@ void FAUNAAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     audioStreamer.processBlock(buffer);
 }
 
-//==============================================================================
 bool FAUNAAudioProcessor::hasEditor() const
 {
     return true;
@@ -146,7 +143,6 @@ juce::AudioProcessorEditor* FAUNAAudioProcessor::createEditor()
     return new FAUNAAudioProcessorEditor (*this);
 }
 
-//==============================================================================
 void FAUNAAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
 }
@@ -155,7 +151,6 @@ void FAUNAAudioProcessor::setStateInformation (const void* data, int sizeInBytes
 {
 }
 
-//==============================================================================
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new FAUNAAudioProcessor();
