@@ -358,6 +358,10 @@ void HTTPServer::handleClient(SOCKET clientSocket)
             audioClients.add(client);
             OutputDebugString("FAUNA: Client added to list\n");
             
+            OutputDebugString("FAUNA: About to call handleWebSocketClient\n");
+            handleWebSocketClient(client);
+            OutputDebugString("FAUNA: handleWebSocketClient returned\n");
+            
         }
         else
         {
