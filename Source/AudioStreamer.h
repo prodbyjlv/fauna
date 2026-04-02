@@ -18,9 +18,9 @@ public:
 
 private:
     juce::AudioBuffer<float> circularBuffer;
-    std::atomic<int> writePosition{ 0 };
-    std::atomic<int> readPosition{ 0 };
-    std::atomic<float> currentLevel{ 0.0f };
+    int writePosition = 0;
+    int readPosition = 0;
+    float currentLevel = 0.0f;
 
     int bufferSize = 0;
     int sampleRate = 44100;

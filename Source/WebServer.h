@@ -13,6 +13,7 @@ public:
     bool muted = false;
     juce::String ipAddress;
     bool isWebSocket = false;
+    int64_t lastPingTime = 0;
 };
 
 class HTTPServer
@@ -23,21 +24,22 @@ public:
 
     bool start(int port = 8080);
     void stop();
-    void processConnections();
     
-    bool isRunning() const { return running.load(); }
+    bool isRunning() const { return running; }
     int getPort() const { return port; }
     int getConnectedClients() const { return audioClients.size(); }
+    void detectLocalIP();
     juce::String getLocalIPAddress() const { return localIP; }
-    float getCurrentLevel() const { return currentLevel.load(); }
+    float getCurrentLevel() const { return currentLevel; }
     
     void setMuteState(int clientId, bool muted) {}
     void writeAudioData(const float* audioData, int numSamples);
     
-    void setLevel(float level) { currentLevel.store(level); }
+    void setLevel(float level) { currentLevel = level; }
 
 private:
-    void detectLocalIP();
+    static DWORD WINAPI serverThreadFunc(LPVOID lpParam);
+    DWORD serverThread();
     SOCKET createServerSocket(int port);
     void handleClient(SOCKET clientSocket);
     void handleWebSocketClient(AudioClient& client);
@@ -48,13 +50,15 @@ private:
     void broadcastAudio(const float* audioData, int numSamples);
 
     int port = 8080;
-    std::atomic<bool> running{ false };
-    std::atomic<float> currentLevel{ 0.0f };
-    juce::String localIP = "127.0.0.1";
+    volatile bool running = false;
+    float currentLevel = 0.0f;
+    juce::String localIP;
 
     SOCKET serverSocket = INVALID_SOCKET;
+    HANDLE serverThreadHandle = NULL;
     juce::Array<AudioClient> audioClients;
     juce::CriticalSection clientsLock;
 
     JUCE_LEAK_DETECTOR(HTTPServer)
 };
+

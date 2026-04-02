@@ -1,68 +1,13 @@
 #include "PluginEditor.h"
-#include <cmath>
-
-juce::Image QRCodeGenerator::generateQRCode(const juce::String& data, int size)
-{
-    int version = 1;
-    int moduleSize = size / (version * 4 + 17);
-    if (moduleSize < 1) moduleSize = 1;
-    int qrSize = version * 4 + 17;
-    
-    juce::Image image(juce::Image::ARGB, size, size, true);
-    juce::Graphics g(image);
-    g.fillAll(juce::Colours::white);
-    
-    for (int my = 0; my < qrSize; my++)
-    {
-        for (int mx = 0; mx < qrSize; mx++)
-        {
-            bool isBlack = false;
-            
-            if (mx < 8 && my < 8)
-            {
-                if (mx == 0 || mx == 7 || my == 0 || my == 7 ||
-                    (mx >= 2 && mx <= 4 && my >= 2 && my <= 4))
-                    isBlack = true;
-            }
-            else if (mx >= qrSize - 8 && my < 8)
-            {
-                int rx = mx - (qrSize - 8);
-                if (rx == 0 || rx == 7 || my == 0 || my == 7 ||
-                    (rx >= 2 && rx <= 4 && my >= 2 && my <= 4))
-                    isBlack = true;
-            }
-            else if (mx < 8 && my >= qrSize - 8)
-            {
-                int ry = my - (qrSize - 8);
-                if (mx == 0 || mx == 7 || ry == 0 || ry == 7 ||
-                    (mx >= 2 && mx <= 4 && ry >= 2 && ry <= 4))
-                    isBlack = true;
-            }
-            else if (mx >= 9 && mx < qrSize - 8 && my >= 9 && my < qrSize - 8)
-            {
-                int hash = (mx * 7 + my * 13 + data.length()) % 4;
-                isBlack = ((mx + my) % 2 == hash);
-            }
-            
-            if (isBlack)
-            {
-                g.setColour(juce::Colours::black);
-                g.fillRect(mx * moduleSize, my * moduleSize, moduleSize, moduleSize);
-            }
-        }
-    }
-    
-    return image;
-}
 
 FAUNAAudioProcessorEditor::FAUNAAudioProcessorEditor (FAUNAAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
-    setSize (500, 500);
+    setSize (500, 420);
     
     addAndMakeVisible(titleLabel);
     titleLabel.setText("FAUNA", juce::dontSendNotification);
-    titleLabel.setFont(juce::FontOptions(24.0f, juce::Font::bold));
+    titleLabel.setFont(juce::FontOptions(28.0f, juce::Font::bold));
     titleLabel.setColour(juce::Label::textColourId, juce::Colours::cyan);
     titleLabel.setJustificationType(juce::Justification::centred);
     
@@ -71,9 +16,6 @@ FAUNAAudioProcessorEditor::FAUNAAudioProcessorEditor (FAUNAAudioProcessor& p)
     statusLabel.setFont(juce::FontOptions(14.0f));
     statusLabel.setJustificationType(juce::Justification::centred);
     
-    addAndMakeVisible(qrImage);
-    qrImage.setImage(juce::Image());
-    
     addAndMakeVisible(ipLabel);
     ipLabel.setText("IP: --", juce::dontSendNotification);
     ipLabel.setFont(juce::FontOptions(14.0f));
@@ -81,24 +23,30 @@ FAUNAAudioProcessorEditor::FAUNAAudioProcessorEditor (FAUNAAudioProcessor& p)
     ipLabel.setJustificationType(juce::Justification::centred);
     
     addAndMakeVisible(urlLabel);
-    urlLabel.setText("http://--.--.--:8080", juce::dontSendNotification);
+    urlLabel.setText("Open this URL on your phone:", juce::dontSendNotification);
     urlLabel.setFont(juce::FontOptions(12.0f));
-    urlLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+    urlLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
     urlLabel.setJustificationType(juce::Justification::centred);
+    
+    addAndMakeVisible(urlBigLabel);
+    urlBigLabel.setText("http://--.--.--:8080", juce::dontSendNotification);
+    urlBigLabel.setFont(juce::FontOptions(20.0f, juce::Font::bold));
+    urlBigLabel.setColour(juce::Label::textColourId, juce::Colours::yellow);
+    urlBigLabel.setJustificationType(juce::Justification::centred);
     
     addAndMakeVisible(clientsLabel);
     clientsLabel.setText("Connected: 0 devices", juce::dontSendNotification);
-    clientsLabel.setFont(juce::FontOptions(12.0f));
+    clientsLabel.setFont(juce::FontOptions(14.0f));
     clientsLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
     clientsLabel.setJustificationType(juce::Justification::centred);
     
     addAndMakeVisible(infoLabel);
-    infoLabel.setText("Scan QR code with mobile device", juce::dontSendNotification);
-    infoLabel.setFont(juce::FontOptions(11.0f));
+    infoLabel.setText("Type the URL above into your phone's browser", juce::dontSendNotification);
+    infoLabel.setFont(juce::FontOptions(12.0f));
     infoLabel.setColour(juce::Label::textColourId, juce::Colours::darkgrey);
     infoLabel.setJustificationType(juce::Justification::centred);
     
-    startTimer(500);
+    startTimer(200);
 }
 
 FAUNAAudioProcessorEditor::~FAUNAAudioProcessorEditor()
@@ -116,47 +64,49 @@ void FAUNAAudioProcessorEditor::resized()
     auto bounds = getLocalBounds();
     bounds.reduce(20, 20);
     
-    titleLabel.setBounds(bounds.removeFromTop(35));
-    statusLabel.setBounds(bounds.removeFromTop(25));
+    titleLabel.setBounds(bounds.removeFromTop(40));
+    statusLabel.setBounds(bounds.removeFromTop(30));
     
-    int qrSize = 160;
-    int qrX = (bounds.getWidth() - qrSize) / 2;
-    qrImage.setBounds(qrX, bounds.getY(), qrSize, qrSize);
+    bounds.removeFromTop(20);
     
-    bounds.removeFromTop(qrSize + 15);
-    
-    ipLabel.setBounds(bounds.removeFromTop(25));
+    ipLabel.setBounds(bounds.removeFromTop(30));
     urlLabel.setBounds(bounds.removeFromTop(25));
-    clientsLabel.setBounds(bounds.removeFromTop(25));
-    infoLabel.setBounds(bounds.removeFromTop(25));
+    urlBigLabel.setBounds(bounds.removeFromTop(45));
+    
+    clientsLabel.setBounds(bounds.removeFromTop(30));
+    infoLabel.setBounds(bounds.removeFromTop(30));
 }
 
 void FAUNAAudioProcessorEditor::timerCallback()
 {
-    if (audioProcessor.isServerRunning())
+    static bool ipDetected = false;
+    static int attemptCount = 0;
+    
+    if (!audioProcessor.isServerRunning())
     {
-        statusLabel.setText("Server: Running", juce::dontSendNotification);
-        statusLabel.setColour(juce::Label::textColourId, juce::Colours::green);
-        
-        juce::String ip = audioProcessor.httpServer.getLocalIPAddress();
-        juce::String url = "http://" + ip + ":8080";
-        
-        ipLabel.setText("IP: " + ip, juce::dontSendNotification);
-        urlLabel.setText(url, juce::dontSendNotification);
-        
-        clientsLabel.setText("Connected: " + juce::String(audioProcessor.getConnectedClients()) + " device(s)", 
-                           juce::dontSendNotification);
-        
-        if (qrImage.getImage().isNull())
+        attemptCount++;
+        if (attemptCount <= 10)
         {
-            juce::Image qr = QRCodeGenerator::generateQRCode(url, 160);
-            qrImage.setImage(qr);
+            statusLabel.setText("Server: Starting... (" + juce::String(attemptCount) + ")", juce::dontSendNotification);
         }
+        return;
     }
-    else
+    
+    if (!ipDetected)
     {
-        statusLabel.setText("Server: Stopped", juce::dontSendNotification);
-        statusLabel.setColour(juce::Label::textColourId, juce::Colours::red);
-        qrImage.setImage(juce::Image());
+        audioProcessor.httpServer.detectLocalIP();
+        ipDetected = true;
     }
+    
+    statusLabel.setText("Server: Running", juce::dontSendNotification);
+    statusLabel.setColour(juce::Label::textColourId, juce::Colours::green);
+    
+    juce::String ip = audioProcessor.httpServer.getLocalIPAddress();
+    juce::String urlText = "http://" + ip + ":8080";
+    
+    ipLabel.setText("IP: " + ip, juce::dontSendNotification);
+    urlBigLabel.setText(urlText, juce::dontSendNotification);
+    
+    juce::String clientText = "Connected: " + juce::String(audioProcessor.getConnectedClients()) + " device(s)";
+    clientsLabel.setText(clientText, juce::dontSendNotification);
 }

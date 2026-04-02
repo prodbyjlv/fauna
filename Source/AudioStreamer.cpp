@@ -19,6 +19,7 @@ void AudioStreamer::prepareToPlay(double sampleRate, int maximumExpectedSamplesP
 
     writePosition = 0;
     readPosition = 0;
+    currentLevel = 0.0f;
 }
 
 void AudioStreamer::processBlock(juce::AudioBuffer<float>& buffer)
@@ -34,7 +35,7 @@ void AudioStreamer::processBlock(juce::AudioBuffer<float>& buffer)
 
         for (int i = 0; i < numSamples; ++i)
         {
-            int writeIdx = writePosition.load();
+            int writeIdx = writePosition;
 
             if (numChannels == 2)
             {
@@ -53,17 +54,17 @@ void AudioStreamer::processBlock(juce::AudioBuffer<float>& buffer)
             if (sample > maxLevel)
                 maxLevel = sample;
 
-            writePosition.store((writeIdx + 1) % bufferSize);
+            writePosition = (writeIdx + 1) % bufferSize;
         }
     }
 
-    currentLevel.store(maxLevel);
+    currentLevel = maxLevel;
 }
 
 int AudioStreamer::getAvailableSamples()
 {
-    int w = writePosition.load();
-    int r = readPosition.load();
+    int w = writePosition;
+    int r = readPosition;
 
     if (w >= r)
         return w - r;
@@ -77,10 +78,10 @@ void AudioStreamer::consumeSamples(float* outputBuffer, int numSamples)
     {
         if (getAvailableSamples() > 0)
         {
-            int r = readPosition.load();
+            int r = readPosition;
             outputBuffer[i * 2] = circularBuffer.getSample(0, r);
             outputBuffer[i * 2 + 1] = circularBuffer.getSample(1, r);
-            readPosition.store((r + 1) % bufferSize);
+            readPosition = (r + 1) % bufferSize;
         }
         else
         {
@@ -92,5 +93,5 @@ void AudioStreamer::consumeSamples(float* outputBuffer, int numSamples)
 
 float AudioStreamer::getCurrentLevel()
 {
-    return currentLevel.load();
+    return currentLevel;
 }

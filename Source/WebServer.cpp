@@ -100,9 +100,10 @@ static juce::String base64Encode(const unsigned char* data, int len) {
 
 HTTPServer::HTTPServer()
 {
-    detectLocalIP();
     WSADATA wsaData;
     WSAStartup(MAKEWORD(2, 2), &wsaData);
+    juce::String defaultIP = "127.0.0.1";
+    localIP = defaultIP;
 }
 
 HTTPServer::~HTTPServer()
@@ -116,18 +117,19 @@ void HTTPServer::detectLocalIP()
     juce::Array<juce::IPAddress> addresses;
     juce::IPAddress::findAllAddresses(addresses);
     
-    for (auto& addr : addresses)
+    juce::String resultIP = "127.0.0.1";
+    
+    for (int i = 0; i < addresses.size(); i++)
     {
-        juce::String ip = addr.toString();
+        juce::String ip = addresses[i].toString();
         if (ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172."))
         {
-            localIP = ip;
+            resultIP = ip;
             break;
         }
     }
     
-    if (localIP == "127.0.0.1" && addresses.size() > 0)
-        localIP = addresses[0].toString();
+    localIP = resultIP;
 }
 
 bool HTTPServer::start(int targetPort)
@@ -135,9 +137,128 @@ bool HTTPServer::start(int targetPort)
     port = targetPort;
     serverSocket = createServerSocket(port);
     if (serverSocket == INVALID_SOCKET)
+    {
+        OutputDebugString("FAUNA: Failed to create socket\n");
         return false;
+    }
+    
     running = true;
+    detectLocalIP();
+    
+    OutputDebugString("FAUNA: Starting server thread\n");
+    
+    serverThreadHandle = CreateThread(NULL, 0, serverThreadFunc, this, 0, NULL);
+    if (serverThreadHandle == NULL)
+    {
+        OutputDebugString("FAUNA: Failed to create thread\n");
+        running = false;
+        closesocket(serverSocket);
+        serverSocket = INVALID_SOCKET;
+        return false;
+    }
+    OutputDebugString("FAUNA: Server started\n");
     return true;
+}
+
+void HTTPServer::stop()
+{
+    OutputDebugString("FAUNA: Stop requested\n");
+    running = false;
+    
+    if (serverSocket != INVALID_SOCKET) {
+        shutdown(serverSocket, SD_BOTH);
+        closesocket(serverSocket);
+        serverSocket = INVALID_SOCKET;
+    }
+    
+    if (serverThreadHandle != NULL)
+    {
+        OutputDebugString("FAUNA: Waiting for server thread...\n");
+        DWORD waitResult = WaitForSingleObject(serverThreadHandle, 2000);
+        if (waitResult == WAIT_TIMEOUT)
+        {
+            OutputDebugString("FAUNA: Thread timeout, terminating\n");
+            TerminateThread(serverThreadHandle, 0);
+        }
+        else
+        {
+            OutputDebugString("FAUNA: Server thread exited cleanly\n");
+        }
+        CloseHandle(serverThreadHandle);
+        serverThreadHandle = NULL;
+    }
+    
+    {
+        juce::ScopedLock lock(clientsLock);
+        OutputDebugString(("FAUNA: Closing " + juce::String(audioClients.size()) + " client sockets\n").toUTF8());
+        for (auto& client : audioClients) {
+            if (client.socket != INVALID_SOCKET) {
+                shutdown(client.socket, SD_BOTH);
+                closesocket(client.socket);
+                client.socket = INVALID_SOCKET;
+            }
+        }
+        audioClients.clear();
+    }
+    OutputDebugString("FAUNA: Server fully stopped\n");
+}
+
+DWORD WINAPI HTTPServer::serverThreadFunc(LPVOID lpParam)
+{
+    HTTPServer* server = (HTTPServer*)lpParam;
+    return server->serverThread();
+}
+
+DWORD HTTPServer::serverThread()
+{
+    OutputDebugString("FAUNA: Server thread started\n");
+    while (running && serverSocket != INVALID_SOCKET)
+    {
+        sockaddr_in clientAddr;
+        int clientLen = sizeof(clientAddr);
+        SOCKET clientSocket = accept(serverSocket, (sockaddr*)&clientAddr, &clientLen);
+        
+        if (clientSocket != INVALID_SOCKET)
+        {
+            OutputDebugString("FAUNA: Client connected\n");
+            handleClient(clientSocket);
+        }
+        else
+        {
+            Sleep(10);
+        }
+        
+        juce::ScopedLock lock(clientsLock);
+        for (int i = audioClients.size() - 1; i >= 0; i--)
+        {
+            AudioClient& client = audioClients.getReference(i);
+            if (client.socket != INVALID_SOCKET)
+            {
+                fd_set readSet;
+                FD_ZERO(&readSet);
+                FD_SET(client.socket, &readSet);
+                TIMEVAL tv;
+                tv.tv_sec = 0;
+                tv.tv_usec = 50000;
+                
+                int result = select(0, &readSet, nullptr, nullptr, &tv);
+                if (result > 0)
+                {
+                    handleWebSocketClient(client);
+                }
+                else if (result < 0)
+                {
+                    char dbg[128];
+                    sprintf(dbg, "FAUNA: select error %d\n", WSAGetLastError());
+                    OutputDebugString(dbg);
+                }
+            }
+            if (client.socket == INVALID_SOCKET)
+                audioClients.remove(i);
+        }
+    }
+    OutputDebugString("FAUNA: Server thread exiting\n");
+    return 0;
 }
 
 SOCKET HTTPServer::createServerSocket(int port)
@@ -167,95 +288,6 @@ SOCKET HTTPServer::createServerSocket(int port)
     return listenSocket;
 }
 
-void HTTPServer::stop()
-{
-    running = false;
-    
-    if (serverSocket != INVALID_SOCKET) {
-        shutdown(serverSocket, SD_BOTH);
-        closesocket(serverSocket);
-        serverSocket = INVALID_SOCKET;
-    }
-    
-    {
-        juce::ScopedLock lock(clientsLock);
-        for (auto& client : audioClients) {
-            if (client.socket != INVALID_SOCKET) {
-                shutdown(client.socket, SD_BOTH);
-                closesocket(client.socket);
-            }
-        }
-        audioClients.clear();
-    }
-}
-
-void HTTPServer::processConnections()
-{
-    if (!running || serverSocket == INVALID_SOCKET)
-        return;
-    
-    fd_set readSet;
-    FD_ZERO(&readSet);
-    if (serverSocket != INVALID_SOCKET)
-        FD_SET(serverSocket, &readSet);
-    
-    TIMEVAL timeout;
-    timeout.tv_sec = 0;
-    timeout.tv_usec = 10000;
-    
-    int result = select(0, &readSet, nullptr, nullptr, &timeout);
-    
-    if (result > 0 && serverSocket != INVALID_SOCKET && FD_ISSET(serverSocket, &readSet))
-    {
-        sockaddr_in clientAddr;
-        int clientLen = sizeof(clientAddr);
-        SOCKET clientSocket = accept(serverSocket, (sockaddr*)&clientAddr, &clientLen);
-        
-        if (clientSocket != INVALID_SOCKET)
-            handleClient(clientSocket);
-    }
-    
-    juce::Array<SOCKET> toRemove;
-    
-    {
-        juce::ScopedLock lock(clientsLock);
-        for (auto& client : audioClients)
-        {
-            if (client.socket != INVALID_SOCKET && client.isWebSocket)
-            {
-                fd_set clientSet;
-                FD_ZERO(&clientSet);
-                FD_SET(client.socket, &clientSet);
-                timeout.tv_usec = 0;
-                
-                result = select(0, &clientSet, nullptr, nullptr, &timeout);
-                if (result > 0)
-                {
-                    char buf[4096];
-                    int recvResult = recv(client.socket, buf, sizeof(buf), 0);
-                    if (recvResult <= 0)
-                        toRemove.add(client.socket);
-                    else
-                        handleWebSocketClient(client);
-                }
-            }
-        }
-        
-        for (auto sock : toRemove)
-        {
-            for (int i = audioClients.size() - 1; i >= 0; --i)
-            {
-                if (audioClients[i].socket == sock)
-                {
-                    if (audioClients[i].socket != INVALID_SOCKET)
-                        closesocket(audioClients[i].socket);
-                    audioClients.remove(i);
-                }
-            }
-        }
-    }
-}
-
 void HTTPServer::handleClient(SOCKET clientSocket)
 {
     char buffer[8192];
@@ -265,21 +297,49 @@ void HTTPServer::handleClient(SOCKET clientSocket)
     {
         buffer[bytesReceived] = '\0';
         juce::String request(buffer);
+        OutputDebugString("FAUNA: HTTP request received, checking for WebSocket...\n");
         
         if (request.contains("Upgrade") && request.contains("websocket"))
         {
+            OutputDebugString("FAUNA: Detected WebSocket upgrade request\n");
+            
+            const char* keyPtr = strstr(buffer, "Sec-WebSocket-Key:");
+            juce::String wsKey = "dGhlIHNhbXBsZSBub25jZQ==";
+            
+            if (keyPtr != nullptr)
+            {
+                keyPtr += 18;
+                while (*keyPtr == ' ') keyPtr++;
+                const char* endPtr = strstr(keyPtr, "\r\n");
+                if (endPtr != nullptr && endPtr > keyPtr)
+                {
+                    int keyLen = (int)(endPtr - keyPtr);
+                    wsKey = juce::String(keyPtr, keyLen);
+                }
+            }
+            
+            OutputDebugString(("FAUNA: Parsed WebSocket key: " + wsKey + "\n").toUTF8());
+            
+            juce::String acceptKey = generateWebSocketKey(wsKey.toUTF8());
+            OutputDebugString(("FAUNA: Generated accept key: " + acceptKey + "\n").toUTF8());
+            
             juce::String response = "HTTP/1.1 101 Switching Protocols\r\n";
             response += "Upgrade: websocket\r\n";
             response += "Connection: Upgrade\r\n";
-            response += "Sec-WebSocket-Accept: " + generateWebSocketKey("dGhlIHNhbXBsZSBub25jZQ==") + "\r\n";
+            response += "Sec-WebSocket-Accept: " + acceptKey + "\r\n";
+            response += "Sec-WebSocket-Version: 13\r\n";
+            response += "Sec-WebSocket-Protocol: chat\r\n";
             response += "\r\n";
             
-            send(clientSocket, response.toUTF8(), response.length(), 0);
+            int sent = send(clientSocket, response.toUTF8(), response.length(), 0);
+            OutputDebugString(("FAUNA: 101 Response sent, bytes: " + juce::String(sent) + "\n").toUTF8());
+            
             
             AudioClient client;
             client.socket = clientSocket;
             client.isWebSocket = true;
             client.muted = false;
+            client.lastPingTime = 0;
             
             sockaddr_in addr;
             int addrLen = sizeof(addr);
@@ -288,10 +348,12 @@ void HTTPServer::handleClient(SOCKET clientSocket)
                 char ipStr[INET_ADDRSTRLEN];
                 inet_ntop(AF_INET, &addr.sin_addr, ipStr, INET_ADDRSTRLEN);
                 client.ipAddress = ipStr;
+                OutputDebugString(("FAUNA: Client IP: " + juce::String(ipStr) + "\n").toUTF8());
             }
             
             juce::ScopedLock lock(clientsLock);
             audioClients.add(client);
+            OutputDebugString("FAUNA: Client added to list\n");
         }
         else
         {
@@ -302,37 +364,110 @@ void HTTPServer::handleClient(SOCKET clientSocket)
     }
     else
     {
+        int err = WSAGetLastError();
+        char dbg[128];
+        sprintf(dbg, "FAUNA: recv error %d\n", err);
+        OutputDebugString(dbg);
         closesocket(clientSocket);
     }
 }
 
 void HTTPServer::handleWebSocketClient(AudioClient& client)
 {
-    char buffer[4096];
+    fd_set readSet;
+    FD_ZERO(&readSet);
+    FD_SET(client.socket, &readSet);
+    TIMEVAL tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 10000;
+    
+    int ready = select(0, &readSet, nullptr, nullptr, &tv);
+    if (ready <= 0)
+        return;
+    
+    char buffer[8192];
     int bytesReceived = recv(client.socket, buffer, sizeof(buffer), 0);
     
-    if (bytesReceived > 2)
+    if (bytesReceived <= 0)
     {
-        unsigned char opcode = buffer[0] & 0x0F;
-        
-        if (opcode == 0x01)
+        int err = WSAGetLastError();
+        char dbg[128];
+        sprintf(dbg, "FAUNA: recv returned %d, WSA error %d\n", bytesReceived, err);
+        OutputDebugString(dbg);
+        client.socket = INVALID_SOCKET;
+        return;
+    }
+    
+    char dbg[128];
+    sprintf(dbg, "FAUNA: WS recv %d bytes, opcode=0x%02X, masked=%d, payloadLen=%u\n", 
+        bytesReceived, (unsigned char)buffer[0], (buffer[1] & 0x80) != 0, buffer[1] & 0x7F);
+    OutputDebugString(dbg);
+    
+    unsigned char opcode = buffer[0] & 0x0F;
+    bool masked = (buffer[1] & 0x80) != 0;
+    unsigned int payloadLength = buffer[1] & 0x7F;
+    
+    int headerLen = 2;
+    if (payloadLength == 126) headerLen += 2;
+    if (payloadLength == 127) headerLen += 8;
+    if (masked) headerLen += 4;
+    
+    if (opcode == 0x01)
+    {
+        OutputDebugString("FAUNA: Processing text frame\n");
+        if (bytesReceived >= headerLen)
         {
-            int headerLen = 2;
-            int length = buffer[1] & 0x7F;
-            if (length == 126) headerLen = 4;
-            if (length == 127) headerLen = 10;
+            char* data = buffer + headerLen;
+            int dataLen = bytesReceived - headerLen;
             
-            if (bytesReceived > headerLen)
+            if (masked && dataLen > 0)
             {
-                juce::String message(buffer + headerLen, bytesReceived - headerLen);
-                if (message.contains("mute"))
-                    client.muted = message.contains("true");
+                char* maskKey = buffer + headerLen - 4;
+                for (int i = 0; i < dataLen; i++)
+                {
+                    data[i] = data[i] ^ maskKey[i % 4];
+                }
+            }
+            
+            juce::String message(data, dataLen);
+            sprintf(dbg, "FAUNA: Text message: %s\n", message.toUTF8());
+            OutputDebugString(dbg);
+            if (message.contains("mute"))
+                client.muted = message.contains("true");
+        }
+    }
+    else if (opcode == 0x08)
+    {
+        OutputDebugString("FAUNA: Close frame received, closing connection\n");
+        sendWebSocketFrame(client.socket, nullptr, 0, 0x08);
+        client.socket = INVALID_SOCKET;
+    }
+    else if (opcode == 0x09)
+    {
+        OutputDebugString("FAUNA: Ping received, sending pong\n");
+        char pongPayload[4096];
+        int pongLen = 0;
+        
+        if (payloadLength > 0 && payloadLength < 4096 && bytesReceived > headerLen)
+        {
+            pongLen = payloadLength;
+            memcpy(pongPayload, buffer + headerLen, pongLen);
+            
+            if (masked)
+            {
+                char* maskKey = buffer + headerLen - 4;
+                for (int i = 0; i < pongLen; i++)
+                {
+                    pongPayload[i] = pongPayload[i] ^ maskKey[i % 4];
+                }
             }
         }
-        else if (opcode == 0x08)
-        {
-            client.socket = INVALID_SOCKET;
-        }
+        
+        sendWebSocketFrame(client.socket, pongLen > 0 ? pongPayload : nullptr, pongLen, 0x0A);
+    }
+    else if (opcode == 0x0A)
+    {
+        OutputDebugString("FAUNA: Pong received (connection alive)\n");
     }
 }
 
@@ -348,36 +483,49 @@ juce::String HTTPServer::generateWebSocketKey(const char* key)
 
 void HTTPServer::sendWebSocketFrame(SOCKET socket, const char* data, int length, int opcode)
 {
-    if (socket == INVALID_SOCKET || length <= 0)
+    if (socket == INVALID_SOCKET)
         return;
     
-    juce::MemoryOutputStream stream;
-    stream.writeByte(0x80 | (opcode & 0x0F));
+    char dbg[128];
+    sprintf(dbg, "FAUNA: Sending WS frame: opcode=0x%02X, length=%d\n", opcode, length);
+    OutputDebugString(dbg);
     
-    if (length < 126)
-        stream.writeByte(length);
+    char header[14];
+    int headerLen = 2;
+    header[0] = 0x80 | (opcode & 0x0F);
+    
+    if (length == 0)
+    {
+        header[1] = 0;
+    }
+    else if (length < 126)
+    {
+        header[1] = (char)(length & 0x7F);
+    }
     else if (length < 65536)
     {
-        stream.writeByte(126);
-        stream.writeByte((length >> 8) & 0xFF);
-        stream.writeByte(length & 0xFF);
+        header[1] = 126;
+        header[2] = (char)((length >> 8) & 0xFF);
+        header[3] = (char)(length & 0xFF);
+        headerLen = 4;
+    }
+    else
+    {
+        header[1] = 127;
+        for (int i = 0; i < 8; i++)
+            header[2 + i] = 0;
+        header[10] = (char)((length >> 8) & 0xFF);
+        header[11] = (char)(length & 0xFF);
+        headerLen = 12;
     }
     
-    stream.write(data, length);
-    send(socket, (const char*)stream.getData(), (int)stream.getDataSize(), 0);
+    send(socket, header, headerLen, 0);
+    if (length > 0 && data != nullptr)
+        send(socket, data, length, 0);
 }
 
 void HTTPServer::broadcastAudio(const float* audioData, int numSamples)
 {
-    juce::ScopedLock lock(clientsLock);
-    
-    for (auto& client : audioClients)
-    {
-        if (client.socket != INVALID_SOCKET && !client.muted)
-        {
-            sendWebSocketFrame(client.socket, (const char*)audioData, numSamples * 2 * sizeof(float), 0x02);
-        }
-    }
 }
 
 void HTTPServer::writeAudioData(const float* audioData, int numSamples)
@@ -387,103 +535,39 @@ void HTTPServer::writeAudioData(const float* audioData, int numSamples)
 
 juce::String HTTPServer::getHTMLPage()
 {
-    return R"(
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FAUNA Audio Stream</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; padding: 20px; }
-        .container { background: rgba(255,255,255,0.1); border-radius: 20px; padding: 40px; text-align: center; backdrop-filter: blur(10px); max-width: 400px; width: 100%; }
-        h1 { font-size: 2.5em; margin-bottom: 10px; color: #00d4ff; }
-        .subtitle { font-size: 0.9em; color: #888; margin-bottom: 30px; }
-        .level-meter { width: 100%; height: 30px; background: rgba(0,0,0,0.3); border-radius: 15px; overflow: hidden; margin-bottom: 30px; }
-        .level-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #00ff88, #00d4ff, #ffaa00, #ff4444); transition: width 0.1s; border-radius: 15px; }
-        .mute-btn { padding: 20px 60px; font-size: 1.5em; border: none; border-radius: 15px; cursor: pointer; transition: all 0.3s; font-weight: bold; }
-        .mute-btn.muted { background: #ff4444; color: white; }
-        .mute-btn.unmuted { background: #00ff88; color: #1a1a2e; }
-        .mute-btn:hover { transform: scale(1.05); }
-        .status { margin-top: 20px; font-size: 0.8em; color: #888; }
-        .connected { color: #00ff88; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>FAUNA</h1>
-        <p class="subtitle">Audio Streaming Control</p>
-        <div class="level-meter"><div class="level-bar" id="levelBar"></div></div>
-        <button class="mute-btn unmuted" id="muteBtn">UNMUTED</button>
-        <p class="status" id="status">Connecting...</p>
-    </div>
-    <script>
-        var ws = null;
-        var isMuted = false;
-        var audioContext = null;
-        var gainNode = null;
-        
-        function initAudio() {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            gainNode = audioContext.createGain();
-            gainNode.connect(audioContext.destination);
-            gainNode.gain.value = 1.0;
-        }
-        
-        function connect() {
-            var wsUrl = "ws://" + window.location.host + "/audio";
-            ws = new WebSocket(wsUrl);
-            
-            ws.onopen = function() {
-                document.getElementById("status").textContent = "Connected";
-                document.getElementById("status").className = "status connected";
-                if (!audioContext) initAudio();
-            };
-            
-            ws.onclose = function() {
-                document.getElementById("status").textContent = "Disconnected";
-                setTimeout(connect, 2000);
-            };
-            
-            ws.onerror = function() {
-                document.getElementById("status").textContent = "Error";
-            };
-            
-            ws.onmessage = function(event) {
-                if (event.data instanceof Blob) {
-                    event.data.arrayBuffer().then(function(buffer) {
-                        if (audioContext) {
-                            audioContext.decodeAudioData(buffer).then(function(audioBuffer) {
-                                var source = audioContext.createBufferSource();
-                                source.buffer = audioBuffer;
-                                source.connect(gainNode);
-                                source.start();
-                            }).catch(function() {});
-                        }
-                    });
-                }
-            };
-        }
-        
-        document.getElementById("muteBtn").addEventListener("click", function() {
-            isMuted = !isMuted;
-            if (isMuted) {
-                this.textContent = "MUTED";
-                this.className = "mute-btn muted";
-                if (gainNode) gainNode.gain.value = 0;
-            } else {
-                this.textContent = "UNMUTED";
-                this.className = "mute-btn unmuted";
-                if (gainNode) gainNode.gain.value = 1;
-            }
-        });
-        
-        connect();
-    </script>
-</body>
-</html>
-)";
+    juce::String html = "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">";
+    html += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">";
+    html += "<title>FAUNA Test</title>";
+    html += "<style>";
+    html += "body{font-family:Arial;background:#1a1a2e;color:white;min-height:100vh;margin:0;display:flex;align-items:center;justify-content:center}";
+    html += ".c{background:rgba(255,255,255,0.1);padding:40px;border-radius:20px;text-align:center;max-width:500px}";
+    html += "h1{color:#00d4ff}";
+    html += "p{margin:15px 0}";
+    html += ".ok{color:#0f0}";
+    html += ".err{color:#f00}";
+    html += ".log{text-align:left;font-size:12px;color:#666;max-height:150px;overflow:auto;border:1px solid #333;padding:10px;margin-top:20px}";
+    html += "</style></head><body>";
+    html += "<div class=\"c\">";
+    html += "<h1>FAUNA</h1>";
+    html += "<p>WebSocket Connection Test</p>";
+    html += "<p id=\"s\" class=\"err\">Status: Click button to test</p>";
+    html += "<button onclick=\"testWS()\" style=\"padding:10px 20px;font-size:16px;cursor:pointer\">Test WebSocket</button>";
+    html += "<div class=\"log\" id=\"l\"></div>";
+    html += "</div>";
+    html += "<script>";
+    html += "var d=document.getElementById('l'),s=document.getElementById('s');";
+    html += "function log(m){d.innerHTML+=m+'<br>';d.scrollTop=d.scrollHeight;console.log(m);}";
+    html += "function testWS(){";
+    html += "log('Connecting to ws://'+location.host);";
+    html += "var ws=new WebSocket('ws://'+location.host);";
+    html += "ws.onopen=function(){log('OPEN - Connected!');s.textContent='Connected!';s.className='ok';};";
+    html += "ws.onclose=function(e){log('CLOSE code:'+e.code);s.textContent='Disconnected';s.className='err';};";
+    html += "ws.onerror=function(){log('ERROR');s.textContent='Error';};";
+    html += "ws.onmessage=function(e){log('MSG:'+e.data);};";
+    html += "}";
+    html += "log('Ready. Click button to test.');";
+    html += "</script></body></html>";
+    return html;
 }
 
 juce::String HTTPServer::buildHTTPResponse(const juce::String& request)

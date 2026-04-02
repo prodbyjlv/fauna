@@ -28,14 +28,14 @@
 
 | Phase | Status |
 |-------|--------|
-| Project Setup | ? |
-| Audio Engine | ? |
-| HTTP Server | ? |
-| WebSocket Streaming | ? |
-| Plugin UI | ? |
-| QR Code Display | ? |
-| Mobile Webpage | ? |
-| Multi-device | ?? |
+| Project Setup | ✅ |
+| Audio Engine | ✅ |
+| HTTP Server | ✅ |
+| WebSocket Streaming | ✅ (fixed pong response) |
+| Plugin UI | ✅ |
+| URL Display | ✅ (QR code removed) |
+| Mobile Webpage | ✅ |
+| Multi-device | ✅ (max 2 clients) |
 
 ---
 
@@ -45,10 +45,10 @@
 FAUNA/
 +-- FAUNA.jucer
 +-- Source/
-�   +-- PluginProcessor.cpp/h
-�   +-- PluginEditor.cpp/h
-�   +-- AudioStreamer.cpp/h
-�   +-- WebServer.cpp/h
+�   +-- PluginProcessor.cpp/h
+�   +-- PluginEditor.cpp/h
+�   +-- AudioStreamer.cpp/h
+�   +-- WebServer.cpp/h
 +-- AGENTS.md
 ```
 
@@ -80,6 +80,22 @@ FAUNA/
 
 ## Build Status
 **Last build:** April 2, 2026 - Successful
+
+---
+
+## Bug Fixes Applied
+
+### WebSocket Error 1006 (April 2, 2026)
+
+**Problem:** Browser disconnected immediately after WebSocket handshake with error 1006.
+
+**Root Causes:**
+1. Pong response incorrectly extracted ping payload
+2. `sendWebSocketFrame` was setting mask bit (0x80) on server-to-client frames
+
+**Solution:**
+1. Fixed `handleWebSocketClient` ping handler to properly unmask and extract payload
+2. Fixed `sendWebSocketFrame` to NOT set mask bit on outgoing frames (servers must never mask frames sent to clients per RFC 6455)
 
 ---
 

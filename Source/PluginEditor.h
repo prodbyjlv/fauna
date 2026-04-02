@@ -11,12 +11,6 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 
-class QRCodeGenerator
-{
-public:
-    static juce::Image generateQRCode(const juce::String& data, int size = 200);
-};
-
 class FAUNAAudioProcessorEditor  : public juce::AudioProcessorEditor, public juce::Timer
 {
 public:
@@ -34,9 +28,9 @@ private:
     juce::Label statusLabel;
     juce::Label ipLabel;
     juce::Label urlLabel;
+    juce::Label urlBigLabel;
     juce::Label clientsLabel;
     juce::Label infoLabel;
-    juce::ImageComponent qrImage;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FAUNAAudioProcessorEditor)
 };
