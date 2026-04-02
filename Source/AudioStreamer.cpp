@@ -26,8 +26,6 @@ void AudioStreamer::processBlock(juce::AudioBuffer<float>& buffer)
     const int numSamples = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();
 
-    std::lock_guard<std::mutex> lock(bufferMutex);
-
     float maxLevel = 0.0f;
 
     for (int ch = 0; ch < numChannels; ++ch)
@@ -75,8 +73,6 @@ int AudioStreamer::getAvailableSamples()
 
 void AudioStreamer::consumeSamples(float* outputBuffer, int numSamples)
 {
-    std::lock_guard<std::mutex> lock(bufferMutex);
-
     for (int i = 0; i < numSamples; ++i)
     {
         if (getAvailableSamples() > 0)

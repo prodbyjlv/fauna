@@ -5,6 +5,11 @@
               companyName="JLV" companyEmail="prodbyjlv@gmail.com">
   <MAINGROUP id="OpiRN7" name="FAUNA">
     <GROUP id="{35D0DE2B-9578-7466-33B0-2893DB82C6C6}" name="Source">
+      <FILE id="tvBXxB" name="AudioStreamer.cpp" compile="1" resource="0"
+            file="Source/AudioStreamer.cpp"/>
+      <FILE id="Etwaro" name="AudioStreamer.h" compile="0" resource="0" file="Source/AudioStreamer.h"/>
+      <FILE id="eksIxu" name="WebServer.cpp" compile="1" resource="0" file="Source/WebServer.cpp"/>
+      <FILE id="r0dBeY" name="WebServer.h" compile="0" resource="0" file="Source/WebServer.h"/>
       <FILE id="YZLk9V" name="PluginProcessor.cpp" compile="1" resource="0"
             file="Source/PluginProcessor.cpp"/>
       <FILE id="SZ8tbg" name="PluginProcessor.h" compile="0" resource="0"
