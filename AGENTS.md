@@ -39,14 +39,14 @@
 - **Format for Streaming:** Raw PCM (simplified approach)
 
 ### Networking
-- **Protocol:** HTTP server with REST API
+- **Protocol:** HTTP server using Winsock
 - **Port:** 8080 (default)
 - **URL Format:** `http://192.168.x.x:8080` (auto-detected local IP)
 - **Max Devices:** 2 simultaneous connections (planned)
 
 ### Web Interface
-- **Mute Control:** Per-device mute state
-- **Level Meter:** Visual audio level indicator
+- **Mute Control:** Per-device mute state (UI ready)
+- **Level Meter:** Visual audio level indicator (UI ready)
 - **Browser Support:** Chrome, Safari, Firefox (mobile)
 - **Connection:** Local network only (no cloud)
 
@@ -67,28 +67,40 @@
 - [x] Implement circular buffer
 - [x] Level meter functionality
 
-### Phase 3: Web Server ? (Basic)
-- [x] Basic HTTP server class
+### Phase 3: HTTP Server ?
+- [x] HTTPServer class with Winsock
+- [x] TCP socket listening
 - [x] IP address detection
 - [x] Status endpoint (/status)
-- [ ] Full HTTP server with client connections
-- [ ] WebSocket for audio streaming
+- [x] HTML webpage served
+- [x] Client connection tracking
 
-### Phase 4: Plugin UI
-- [ ] Display local IP address
-- [ ] Generate QR code
-- [ ] Show connection status
-- [ ] Basic controls
+### Phase 4: Plugin UI ?
+- [x] Display title "FAUNA"
+- [x] Display local IP address
+- [x] Display URL (http://IP:8080)
+- [x] Show connection status
+- [x] Level meter display
 
-### Phase 5: Mobile Webpage
-- [x] HTML/CSS styling (web/index.html)
-- [ ] WebSocket audio playback
-- [ ] Level meter integration
-- [ ] Responsive mobile design
+### Phase 5: Mobile Webpage ?
+- [x] HTML/CSS styling
+- [x] Mute/unmute button
+- [x] Level meter visualization
+- [x] Responsive mobile design
+- [x] Dark theme with cyan accent
 
-### Phase 6: Multi-Device Support
+### Phase 6: Audio Streaming
+- [ ] WebSocket for real-time audio
+- [ ] Client-side audio playback
+- [ ] Actual audio streaming
+
+### Phase 7: Multi-Device Support
 - [ ] Handle 2 simultaneous connections
 - [ ] Per-device mute state
+
+### Phase 8: QR Code
+- [ ] Generate QR code in plugin UI
+- [ ] Display for easy scanning
 
 ---
 
@@ -104,12 +116,10 @@ FAUNA/
 ¦   +-- PluginEditor.h
 ¦   +-- AudioStreamer.cpp    # Audio capture and buffering
 ¦   +-- AudioStreamer.h
-¦   +-- WebServer.cpp        # HTTP server
+¦   +-- WebServer.cpp        # HTTP server with Winsock
 ¦   +-- WebServer.h
 +-- Builds/
 ¦   +-- VisualStudio2026/    # Visual Studio project
-+-- web/
-¦   +-- index.html           # Mobile webpage (styling done, needs WebSocket)
 +-- AGENTS.md               # This file
 ```
 
@@ -119,8 +129,9 @@ FAUNA/
 
 - **Initial UI:** Basic/minimal
 - **Level Meter:** Yes, implemented in AudioStreamer
-- **Mobile Page:** Dark gradient background, cyan accent color (#00d4ff)
+- **Mobile Page:** Dark gradient background (#1a1a2e to #16213e), cyan accent (#00d4ff)
 - **Mute Button:** Green (unmuted) / Red (muted)
+- **Font:** System fonts (Segoe UI, Roboto, sans-serif)
 
 ---
 
@@ -137,11 +148,10 @@ FAUNA/
 - JUCE path: `C:\JLV JUCE\juce-8.0.12-windows\JUCE`
 
 ### Next Steps
-1. Add full HTTP server with TCP socket listening
-2. Implement WebSocket for audio streaming
+1. Add WebSocket for real-time audio streaming
+2. Implement actual audio playback on mobile webpage
 3. Add QR code generation to plugin UI
-4. Connect mobile webpage to audio stream
-5. Add actual audio playback on client side
+4. Test with real mobile device
 
 ---
 
@@ -149,8 +159,9 @@ FAUNA/
 
 **Last successful build:** April 2, 2026
 - VST3 plugin compiles successfully
+- HTTP server starts on port 8080
+- Mobile webpage accessible
 - Audio capture working
-- Basic WebServer framework in place
 
 ---
 
@@ -167,9 +178,15 @@ FAUNA/
 ### Session 2 (April 2, 2026)
 - Integrated AudioStreamer class (audio capture and buffering)
 - Integrated WebServer class (basic HTTP framework)
-- Created mobile webpage (web/index.html)
 - Resolved multiple build issues (threading, OpenSSL, file encoding)
 - VST3 plugin builds successfully
+- Code pushed to GitHub
+
+### Session 3 (April 2, 2026)
+- Added HTTPServer with Winsock for HTTP server
+- Created mobile webpage with mute/unmute and level meter
+- Updated plugin UI with status, IP, URL display
+- HTTP server successfully starts with plugin
 - Code pushed to GitHub
 
 ---
