@@ -9,7 +9,8 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-//==============================================================================
+static const int AUDIO_BUFFER_SIZE = 4096;
+
 FAUNAAudioProcessor::FAUNAAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
      : AudioProcessor (BusesProperties()
@@ -133,6 +134,26 @@ void FAUNAAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     audioStreamer.processBlock(buffer);
     httpServer.setLevel(audioStreamer.getCurrentLevel());
     httpServer.processConnections();
+    
+    const int numSamples = buffer.getNumSamples();
+    const int numChannels = buffer.getNumChannels();
+    
+    if (numChannels >= 2 && numSamples > 0)
+    {
+        juce::HeapBlock<float> interleavedBuffer;
+        interleavedBuffer.allocate(numSamples * 2, true);
+        
+        for (int i = 0; i < numSamples; ++i)
+        {
+            interleavedBuffer[i * 2] = buffer.getSample(0, i);
+            if (numChannels > 1)
+                interleavedBuffer[i * 2 + 1] = buffer.getSample(1, i);
+            else
+                interleavedBuffer[i * 2 + 1] = buffer.getSample(0, i);
+        }
+        
+        httpServer.writeAudioData(interleavedBuffer.getData(), numSamples);
+    }
 }
 
 bool FAUNAAudioProcessor::hasEditor() const

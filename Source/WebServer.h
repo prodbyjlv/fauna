@@ -6,12 +6,13 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-class HTTPClient
+class AudioClient
 {
 public:
     SOCKET socket = INVALID_SOCKET;
     bool muted = false;
     juce::String ipAddress;
+    bool isWebSocket = false;
 };
 
 class HTTPServer
@@ -26,12 +27,12 @@ public:
     
     bool isRunning() const { return running.load(); }
     int getPort() const { return port; }
-    int getConnectedClients() const { return clients.size(); }
+    int getConnectedClients() const { return audioClients.size(); }
     juce::String getLocalIPAddress() const { return localIP; }
     float getCurrentLevel() const { return currentLevel.load(); }
     
     void setMuteState(int clientId, bool muted) {}
-    void writeAudioData(const float* audioData, int numSamples) {}
+    void writeAudioData(const float* audioData, int numSamples);
     
     void setLevel(float level) { currentLevel.store(level); }
 
@@ -39,8 +40,12 @@ private:
     void detectLocalIP();
     SOCKET createServerSocket(int port);
     void handleClient(SOCKET clientSocket);
+    void handleWebSocketClient(AudioClient& client);
     juce::String buildHTTPResponse(const juce::String& request);
     juce::String getHTMLPage();
+    juce::String generateWebSocketKey(const char* key);
+    void sendWebSocketFrame(SOCKET socket, const char* data, int length, int opcode);
+    void broadcastAudio(const float* audioData, int numSamples);
 
     int port = 8080;
     std::atomic<bool> running{ false };
@@ -48,7 +53,8 @@ private:
     juce::String localIP = "127.0.0.1";
 
     SOCKET serverSocket = INVALID_SOCKET;
-    juce::Array<HTTPClient> clients;
+    juce::Array<AudioClient> audioClients;
+    juce::CriticalSection clientsLock;
 
     JUCE_LEAK_DETECTOR(HTTPServer)
 };
