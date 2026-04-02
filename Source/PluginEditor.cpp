@@ -33,7 +33,7 @@ FAUNAAudioProcessorEditor::FAUNAAudioProcessorEditor (FAUNAAudioProcessor& p)
     ipLabel.setJustificationType(juce::Justification::centred);
     
     addAndMakeVisible(urlLabel);
-    urlLabel.setText("http://--:--:8080", juce::dontSendNotification);
+    urlLabel.setText("http://--.--.--:8080", juce::dontSendNotification);
     urlLabel.setFont(juce::FontOptions(12.0f));
     urlLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
     urlLabel.setJustificationType(juce::Justification::centred);
@@ -45,7 +45,7 @@ FAUNAAudioProcessorEditor::FAUNAAudioProcessorEditor (FAUNAAudioProcessor& p)
     clientsLabel.setJustificationType(juce::Justification::centred);
     
     addAndMakeVisible(infoLabel);
-    infoLabel.setText("Scan QR code or enter URL in mobile browser", juce::dontSendNotification);
+    infoLabel.setText("Enter URL in mobile browser to control audio", juce::dontSendNotification);
     infoLabel.setFont(juce::FontOptions(11.0f));
     infoLabel.setColour(juce::Label::textColourId, juce::Colours::darkgrey);
     infoLabel.setJustificationType(juce::Justification::centred);
@@ -88,7 +88,7 @@ void FAUNAAudioProcessorEditor::timerCallback()
         statusLabel.setText("Server: Running", juce::dontSendNotification);
         statusLabel.setColour(juce::Label::textColourId, juce::Colours::green);
         
-        juce::String ip = audioProcessor.webServer.getLocalIPAddress();
+        juce::String ip = audioProcessor.httpServer.getLocalIPAddress();
         ipLabel.setText("IP: " + ip, juce::dontSendNotification);
         urlLabel.setText("http://" + ip + ":8080", juce::dontSendNotification);
         

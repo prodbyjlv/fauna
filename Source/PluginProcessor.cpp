@@ -26,7 +26,7 @@ FAUNAAudioProcessor::FAUNAAudioProcessor()
 
 FAUNAAudioProcessor::~FAUNAAudioProcessor()
 {
-    webServer.stop();
+    httpServer.stop();
 }
 
 const juce::String FAUNAAudioProcessor::getName() const
@@ -92,12 +92,12 @@ void FAUNAAudioProcessor::changeProgramName (int index, const juce::String& newN
 void FAUNAAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     audioStreamer.prepareToPlay(sampleRate, samplesPerBlock);
-    webServer.start(8080);
+    httpServer.start(8080);
 }
 
 void FAUNAAudioProcessor::releaseResources()
 {
-    webServer.stop();
+    httpServer.stop();
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -131,6 +131,8 @@ void FAUNAAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         buffer.clear (i, 0, buffer.getNumSamples());
 
     audioStreamer.processBlock(buffer);
+    httpServer.setLevel(audioStreamer.getCurrentLevel());
+    httpServer.processConnections();
 }
 
 bool FAUNAAudioProcessor::hasEditor() const

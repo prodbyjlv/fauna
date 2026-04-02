@@ -48,10 +48,10 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     AudioStreamer audioStreamer;
-    WebServer webServer;
-    bool isServerRunning() const { return webServer.isRunning(); }
-    int getServerPort() const { return webServer.getPort(); }
-    int getConnectedClients() const { return webServer.getConnectedClients(); }
+    HTTPServer httpServer;
+    bool isServerRunning() const { return httpServer.isRunning(); }
+    int getServerPort() const { return httpServer.getPort(); }
+    int getConnectedClients() const { return httpServer.getConnectedClients(); }
 
 private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FAUNAAudioProcessor)
