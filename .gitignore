@@ -1,0 +1,33 @@
+# Build outputs
+Builds/
+x64/
+*.obj
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.pch
+*.exp
+*.lib
+*.ilk
+*.iobj
+*.ipdb
+*.tlog
+*.lastbuildstate
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.sln.docstates
+*.vcxproj.user
+
+# JUCE generated (regenerate with Projucer)
+JuceLibraryCode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
