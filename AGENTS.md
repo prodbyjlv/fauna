@@ -31,11 +31,12 @@
 | Project Setup | ✅ |
 | Audio Engine | ✅ |
 | HTTP Server | ✅ |
-| WebSocket Streaming | ✅ (fixed pong response) |
+| WebSocket Connection | ✅ (fixed SHA-1 + base64) |
 | Plugin UI | ✅ |
 | URL Display | ✅ (QR code removed) |
-| Mobile Webpage | ✅ |
-| Multi-device | ✅ (max 2 clients) |
+| Mobile Webpage (status) | ✅ (HTTP polling) |
+| Mobile Webpage (audio) | ❌ (not implemented) |
+| Audio Streaming | ❌ (not implemented) |
 
 ---
 
@@ -45,10 +46,12 @@
 FAUNA/
 +-- FAUNA.jucer
 +-- Source/
-�   +-- PluginProcessor.cpp/h
-�   +-- PluginEditor.cpp/h
-�   +-- AudioStreamer.cpp/h
-�   +-- WebServer.cpp/h
+│   +-- PluginProcessor.cpp/h
+│   +-- PluginEditor.cpp/h
+│   +-- AudioStreamer.cpp/h
+│   +-- WebServer.cpp/h
++-- web/
+│   +-- index.html (mobile control page)
 +-- AGENTS.md
 ```
 
@@ -58,9 +61,8 @@ FAUNA/
 
 1. Load FAUNA in a DAW
 2. Play audio in your DAW
-3. Scan the QR code with your phone
-4. Open the URL in your browser
-5. Audio streams to your phone!
+3. Open URL on your phone (http://IP:8080)
+4. Audio streams to your phone!
 
 ---
 
@@ -75,6 +77,7 @@ FAUNA/
 - Visual Studio Community
 - JUCE 8.0.12
 - JUCE path: `C:\JLV JUCE\juce-8.0.12-windows\JUCE`
+- Project path: `C:\Users\Joshua\Documents\FAUNA PROJECT\FAUNA`
 
 ---
 
@@ -83,19 +86,63 @@ FAUNA/
 
 ---
 
-## Bug Fixes Applied
+## Session History
 
-### WebSocket Error 1006 (April 2, 2026)
+### April 2, 2026 - WebSocket Connection Fixed
 
-**Problem:** Browser disconnected immediately after WebSocket handshake with error 1006.
+**Problem:** Browser disconnected immediately after WebSocket handshake (error 1006).
 
-**Root Causes:**
-1. Pong response incorrectly extracted ping payload
-2. `sendWebSocketFrame` was setting mask bit (0x80) on server-to-client frames
+**Debug Logs:**
+```
+FAUNA: recv returned 0, WSA error 0
+```
+Browser showed "CLOSE code:1006"
 
-**Solution:**
-1. Fixed `handleWebSocketClient` ping handler to properly unmask and extract payload
-2. Fixed `sendWebSocketFrame` to NOT set mask bit on outgoing frames (servers must never mask frames sent to clients per RFC 6455)
+**Root Causes Identified:**
+1. SHA-1 implementation had incorrect padding calculation
+2. base64Encode had incorrect padding logic
+3. JUCE string lifetime issues in generateWebSocketKey
+
+**Solution Applied:**
+1. Rewrote SHA-1 with correct padding: `totalLen = ((len + 1 + 8 + 63) / 64) * 64`
+2. Fixed base64Encode with proper `remaining` checks
+3. Used std::string to avoid JUCE pointer lifetime issues
+4. Removed direct handleWebSocketClient() call after handshake
+
+**Result:** 
+- ✅ WebSocket connection succeeds
+- ✅ Browser shows "Connected!"
+- ✅ Plugin shows device connected
+- ✅ Proper disconnect on plugin close
+
+---
+
+## Next Steps (Priority Order)
+
+### 1. Implement Audio Streaming (HIGH PRIORITY)
+- Connect AudioStreamer to WebServer
+- Send audio data via WebSocket binary frames
+- Handle multiple clients (max 2)
+
+### 2. Update Mobile Webpage (HIGH PRIORITY)
+- Add WebSocket connection for audio
+- Add AudioContext / Web Audio API playback
+- Add mute/unmute toggle with WebSocket messaging
+
+### 3. Add Mute Control (MEDIUM PRIORITY)
+- Implement setMuteState() in WebServer
+- Send mute messages from webpage to plugin
+
+### 4. Polish (LOW PRIORITY)
+- Add level meter visualization
+- Add connection status indicator
+- Consider adding back QR code
+
+---
+
+## Files Modified
+
+- `Source/WebServer.cpp` - Fixed SHA-1, base64, WebSocket handshake
 
 ---
 
