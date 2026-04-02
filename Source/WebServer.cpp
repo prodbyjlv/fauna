@@ -328,11 +328,14 @@ void HTTPServer::handleClient(SOCKET clientSocket)
             response += "Connection: Upgrade\r\n";
             response += "Sec-WebSocket-Accept: " + acceptKey + "\r\n";
             response += "Sec-WebSocket-Version: 13\r\n";
-            response += "Sec-WebSocket-Protocol: chat\r\n";
             response += "\r\n";
             
             int sent = send(clientSocket, response.toUTF8(), response.length(), 0);
             OutputDebugString(("FAUNA: 101 Response sent, bytes: " + juce::String(sent) + "\n").toUTF8());
+            
+            u_long mode = 1;
+            ioctlsocket(clientSocket, FIONBIO, &mode);
+            OutputDebugString("FAUNA: Set socket to non-blocking mode\n");
             
             
             AudioClient client;
@@ -353,7 +356,7 @@ void HTTPServer::handleClient(SOCKET clientSocket)
             
             juce::ScopedLock lock(clientsLock);
             audioClients.add(client);
-            OutputDebugString("FAUNA: Client added to list\n");
+            OutputDebugString(("FAUNA: Client added, total: " + juce::String(audioClients.size()) + "\n").toUTF8());
         }
         else
         {
@@ -388,16 +391,27 @@ void HTTPServer::handleWebSocketClient(AudioClient& client)
     char buffer[8192];
     int bytesReceived = recv(client.socket, buffer, sizeof(buffer), 0);
     
-    if (bytesReceived <= 0)
+    if (bytesReceived < 0)
     {
         int err = WSAGetLastError();
+        if (err == WSAEWOULDBLOCK)
+        {
+            OutputDebugString("FAUNA: recv would block (no data yet), socket still valid\n");
+            return;
+        }
         char dbg[128];
-        sprintf(dbg, "FAUNA: recv returned %d, WSA error %d\n", bytesReceived, err);
+        sprintf(dbg, "FAUNA: recv error %d\n", err);
         OutputDebugString(dbg);
         client.socket = INVALID_SOCKET;
         return;
     }
     
+    if (bytesReceived == 0)
+    {
+        OutputDebugString("FAUNA: Connection closed by client (recv 0)\n");
+        client.socket = INVALID_SOCKET;
+        return;
+    }
     char dbg[128];
     sprintf(dbg, "FAUNA: WS recv %d bytes, opcode=0x%02X, masked=%d, payloadLen=%u\n", 
         bytesReceived, (unsigned char)buffer[0], (buffer[1] & 0x80) != 0, buffer[1] & 0x7F);
