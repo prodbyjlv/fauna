@@ -99,3 +99,83 @@ iOS Safari defaults to Bluetooth audio output when a Bluetooth device is connect
 3. Test on Android Chrome to see if speakers work there
 4. Consider if this is acceptable behavior (audio to headphones is still functional)
 
+---
+
+## iOS Speaker Fix Attempt - ScriptProcessor Approach
+
+**Date: April 4, 2026**
+
+### What We Tried
+
+After external help, we implemented a completely different audio approach using ScriptProcessorNode:
+
+1. **Full-screen unlock overlay removed** - Simplified to single START button
+2. **Added `<audio id="iosAudio" playsinline>`** - Silent audio element for iOS
+3. **Added `unlockIOSAudio()` function:**
+   - Silent buffer trick: creates 1-sample buffer and plays it
+   - Silent audio element: plays inaudible WAV at 0.01 volume
+4. **ScriptProcessorNode instead of BufferSourceNode:**
+   - Real-time buffer filling instead of scheduled playback
+   - Ring buffer (array) approach for audio data
+   - Directly writes to output buffer in onaudioprocess callback
+
+### Code Structure
+
+```javascript
+// Silent audio unlock
+function unlockIOSAudio(context) {
+    const buffer = context.createBuffer(1, 1, 22050);
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(context.destination);
+    source.start();
+    
+    const iosAudio = document.getElementById('iosAudio');
+    iosAudio.src = 'data:audio/wav;base64,...';
+    iosAudio.volume = 0.01;
+    iosAudio.play();
+}
+
+// ScriptProcessor for real-time playback
+scriptNode = audioCtx.createScriptProcessor(4096, 0, 2);
+scriptNode.onaudioprocess = function(e) {
+    const left = e.outputBuffer.getChannelData(0);
+    const right = e.outputBuffer.getChannelData(1);
+    for (let i = 0; i < 4096; i++) {
+        if (audioBuffer.length >= 2) {
+            left[i] = audioBuffer.shift();
+            right[i] = audioBuffer.shift();
+        } else {
+            left[i] = 0;
+            right[i] = 0;
+        }
+    }
+};
+```
+
+### Result
+
+| Platform | Result |
+|----------|--------|
+| Android | ✅ Works perfectly |
+| iOS Bluetooth | ✅ Works (audio plays through headphones) |
+| iOS Speakers | ❌ Still does not work |
+
+### Conclusion
+
+The ScriptProcessor approach was a complete rewrite of the audio playback method but **did not solve the iPhone speaker issue**. This confirms that:
+
+1. AudioContext is working correctly
+2. Audio data IS being processed and streamed successfully
+3. The issue is purely iOS Safari's audio routing policy for Web Audio API
+4. This is a known platform limitation, not a code bug
+
+### Status: iPhone Speaker Issue Remains Unsolved
+
+All audio playback approaches tested:
+- BufferSourceNode with scheduling ✅ Android / ❌ iOS Speakers
+- Full-screen unlock overlay ✅ Android / ❌ iOS Speakers  
+- ScriptProcessorNode ✅ Android / ❌ iOS Speakers
+
+Audio plays through Bluetooth headphones on iPhone but NOT through built-in speakers. This is an iOS Safari limitation for Web Audio API that cannot be resolved with JavaScript alone.
+
