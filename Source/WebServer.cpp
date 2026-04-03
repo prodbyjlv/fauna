@@ -312,7 +312,7 @@ juce::String HTTPServer::getHTMLPage()
     html+="</div><script>";
 
     html+="var isMuted=false,ws=null,audioCtx=null,started=false;";
-    html+="var nextPlayTime=0,SAMPLE_RATE=44100,initReceived=false;";
+    html+="var nextPlayTime=0,SAMPLE_RATE=44100,initReceived=false,audioBufferCount=0;";
 
     html+="function startAudio(){";
     html+="if(started)return;started=true;";
@@ -331,7 +331,7 @@ juce::String HTTPServer::getHTMLPage()
     html+="document.getElementById('audioStatus').style.color='#ff4444';";
     html+="document.getElementById('startBtn').disabled=false;";
     html+="document.getElementById('startBtn').textContent='RECONNECT';";
-    html+="started=false;initReceived=false;";
+    html+="started=false;initReceived=false;audioBufferCount=0;";
     html+="setTimeout(function(){if(!started){started=true;connectWS();}},3000);";
     html+="};";
     html+="ws.onerror=function(){document.getElementById('audioStatus').textContent='Connection error';};";
@@ -356,17 +356,19 @@ juce::String HTTPServer::getHTMLPage()
     html+="}";
 
     html+="if(!(e.data instanceof ArrayBuffer)||!initReceived||!audioCtx)return;";
+    html+="audioBufferCount++;";
     html+="var floats=new Float32Array(e.data);";
     html+="var numFrames=floats.length/2;if(numFrames<1)return;";
     html+="var abuf=audioCtx.createBuffer(2,numFrames,SAMPLE_RATE);";
     html+="var L=abuf.getChannelData(0),R=abuf.getChannelData(1);";
     html+="for(var i=0;i<numFrames;i++){L[i]=floats[i*2];R[i]=floats[i*2+1];}";
+    html+="var mx=0;for(var i=0;i<Math.min(200,L.length);i++){var av=Math.abs(L[i]);if(av>mx)mx=av;}";
+    html+="document.getElementById('levelBar').style.width=(mx*100)+'%';";
+    html+="if(audioBufferCount<3)return;";
     html+="if(nextPlayTime<audioCtx.currentTime+0.04)nextPlayTime=audioCtx.currentTime+0.04;";
     html+="var src=audioCtx.createBufferSource();";
     html+="src.buffer=abuf;src.connect(audioCtx.destination);src.start(nextPlayTime);";
     html+="nextPlayTime+=abuf.duration;";
-    html+="var mx=0;for(var i=0;i<Math.min(200,L.length);i++){var av=Math.abs(L[i]);if(av>mx)mx=av;}";
-    html+="document.getElementById('levelBar').style.width=(mx*100)+'%';";
     html+="};";
     html+="}";
 
