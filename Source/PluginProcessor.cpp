@@ -23,7 +23,6 @@ FAUNAAudioProcessor::FAUNAAudioProcessor()
 
 FAUNAAudioProcessor::~FAUNAAudioProcessor()
 {
-    isShuttingDown = true;
     httpServer.stop();
 }
 
@@ -70,9 +69,6 @@ void FAUNAAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear(i, 0, buffer.getNumSamples());
 
-    // Process audio for level metering
-    audioStreamer.processBlock(buffer);
-
     const int numSamples  = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();
 
@@ -97,7 +93,6 @@ void FAUNAAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
     // Send to all connected WebSocket clients
     // numSamples is per-channel count; broadcastAudio expects per-channel count
     httpServer.writeAudioData(out, numSamples);
-    OutputDebugString(("FAUNA: processBlock sending " + juce::String(numSamples) + " samples\n").toUTF8());
 }
 
 bool FAUNAAudioProcessor::hasEditor() const { return true; }

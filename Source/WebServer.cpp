@@ -471,15 +471,7 @@ void HTTPServer::sendWebSocketFrame(SOCKET socket, const char* data, int length,
     if (length > 0 && data != nullptr)
         memcpy(frame.get() + headerLen, data, length);
 
-    OutputDebugString(("FAUNA: sendWebSocketFrame - opcode: " + juce::String(opcode) + ", length: " + juce::String(length) + ", total: " + juce::String(totalLen) + "\n").toUTF8());
-
-    int sent = send(socket, frame.get(), totalLen, 0);
-    if (sent == SOCKET_ERROR) {
-        int err = WSAGetLastError();
-        OutputDebugString(("FAUNA: send failed, error: " + juce::String(err) + "\n").toUTF8());
-    } else {
-        OutputDebugString(("FAUNA: send success, bytes sent: " + juce::String(sent) + "\n").toUTF8());
-    }
+    send(socket, frame.get(), totalLen, 0);
 }
 
 //==============================================================================
@@ -496,12 +488,7 @@ void HTTPServer::broadcastAudio(const float* audioData, int numSamples)
 
     juce::ScopedLock lock(clientsLock);
 
-    if (audioClients.size() == 0) {
-        OutputDebugString("FAUNA: broadcastAudio - no clients connected\n");
-        return;
-    }
-
-    OutputDebugString(("FAUNA: broadcastAudio - clients: " + juce::String(audioClients.size()) + ", samples: " + juce::String(numSamples) + "\n").toUTF8());
+    if (audioClients.size() == 0) return;
 
     for (int i = audioClients.size() - 1; i >= 0; i--)
     {
@@ -519,12 +506,10 @@ void HTTPServer::broadcastAudio(const float* audioData, int numSamples)
         if (client.muted)
         {
             juce::HeapBlock<float> silence(numFloats, true); // zero-initialised
-            OutputDebugString(("FAUNA: sending silence to client " + client.ipAddress + "\n").toUTF8());
             sendWebSocketFrame(client.socket, (const char*)silence.get(), byteCount, 0x02); // binary frame
         }
         else
         {
-            OutputDebugString(("FAUNA: sending audio to client " + client.ipAddress + ", bytes: " + juce::String(byteCount) + "\n").toUTF8());
             sendWebSocketFrame(client.socket, (const char*)audioData, byteCount, 0x02); // binary frame
         }
     }

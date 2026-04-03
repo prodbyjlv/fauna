@@ -1,7 +1,7 @@
 /*
   ==============================================================================
 
-    PluginEditor.h - FAUNA Audio Streaming Plugin
+    This file contains the basic framework code for a JUCE plugin editor.
 
   ==============================================================================
 */
@@ -22,24 +22,15 @@ public:
     void timerCallback() override;
 
 private:
-    void drawQRCode(juce::Graphics& g, const juce::String& url, int x, int y, int size);
-    
     FAUNAAudioProcessor& audioProcessor;
     
-    juce::Label urlLabel;
-    
-    juce::Label sampleRateLabel;
-    juce::Label bufferSizeLabel;
-    juce::Label portLabel;
+    juce::Label titleLabel;
     juce::Label statusLabel;
-    juce::Label devicesLabel;
-    
-    bool qrCodeValid = false;
-    juce::String lastURL;
-    
-    juce::Font titleFont;
-    juce::Font urlFont;
-    juce::Font labelFont;
-    
+    juce::Label ipLabel;
+    juce::Label urlLabel;
+    juce::Label urlBigLabel;
+    juce::Label clientsLabel;
+    juce::Label infoLabel;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FAUNAAudioProcessorEditor)
 };

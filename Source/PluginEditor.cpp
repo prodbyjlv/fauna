@@ -1,52 +1,52 @@
 #include "PluginEditor.h"
-#include "QrCode.hpp"
 
 FAUNAAudioProcessorEditor::FAUNAAudioProcessorEditor (FAUNAAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
-    setSize (450, 420);
+    setSize (500, 420);
     
-    titleFont = juce::FontOptions(64.0f, juce::Font::bold);
-    urlFont = juce::FontOptions(16.0f, juce::Font::bold);
-    labelFont = juce::FontOptions(11.0f);
-    
-    addAndMakeVisible(urlLabel);
-    urlLabel.setText("http://--.--.--.--:8080", juce::dontSendNotification);
-    urlLabel.setFont(urlFont);
-    urlLabel.setColour(juce::Label::textColourId, juce::Colour(0xFFD4AF00));
-    urlLabel.setJustificationType(juce::Justification::centred);
-    
-    addAndMakeVisible(sampleRateLabel);
-    sampleRateLabel.setText("Sample Rate: --", juce::dontSendNotification);
-    sampleRateLabel.setFont(labelFont);
-    sampleRateLabel.setColour(juce::Label::textColourId, juce::Colour(0xFFAAAAAA));
-    sampleRateLabel.setJustificationType(juce::Justification::centred);
-    
-    addAndMakeVisible(bufferSizeLabel);
-    bufferSizeLabel.setText("Buffer: --", juce::dontSendNotification);
-    bufferSizeLabel.setFont(labelFont);
-    bufferSizeLabel.setColour(juce::Label::textColourId, juce::Colour(0xFFAAAAAA));
-    bufferSizeLabel.setJustificationType(juce::Justification::centred);
-    
-    addAndMakeVisible(portLabel);
-    portLabel.setText("Port: --", juce::dontSendNotification);
-    portLabel.setFont(labelFont);
-    portLabel.setColour(juce::Label::textColourId, juce::Colour(0xFFAAAAAA));
-    portLabel.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(titleLabel);
+    titleLabel.setText("FAUNA", juce::dontSendNotification);
+    titleLabel.setFont(juce::FontOptions(28.0f, juce::Font::bold));
+    titleLabel.setColour(juce::Label::textColourId, juce::Colours::cyan);
+    titleLabel.setJustificationType(juce::Justification::centred);
     
     addAndMakeVisible(statusLabel);
     statusLabel.setText("Server: Starting...", juce::dontSendNotification);
-    statusLabel.setFont(labelFont);
-    statusLabel.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
+    statusLabel.setFont(juce::FontOptions(14.0f));
     statusLabel.setJustificationType(juce::Justification::centred);
     
-    addAndMakeVisible(devicesLabel);
-    devicesLabel.setText("Devices: 0", juce::dontSendNotification);
-    devicesLabel.setFont(labelFont);
-    devicesLabel.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
-    devicesLabel.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(ipLabel);
+    ipLabel.setText("IP: --", juce::dontSendNotification);
+    ipLabel.setFont(juce::FontOptions(14.0f));
+    ipLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    ipLabel.setJustificationType(juce::Justification::centred);
     
-    startTimer(100);
+    addAndMakeVisible(urlLabel);
+    urlLabel.setText("Open this URL on your phone:", juce::dontSendNotification);
+    urlLabel.setFont(juce::FontOptions(12.0f));
+    urlLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
+    urlLabel.setJustificationType(juce::Justification::centred);
+    
+    addAndMakeVisible(urlBigLabel);
+    urlBigLabel.setText("http://--.--.--:8080", juce::dontSendNotification);
+    urlBigLabel.setFont(juce::FontOptions(20.0f, juce::Font::bold));
+    urlBigLabel.setColour(juce::Label::textColourId, juce::Colours::yellow);
+    urlBigLabel.setJustificationType(juce::Justification::centred);
+    
+    addAndMakeVisible(clientsLabel);
+    clientsLabel.setText("Connected: 0 devices", juce::dontSendNotification);
+    clientsLabel.setFont(juce::FontOptions(14.0f));
+    clientsLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
+    clientsLabel.setJustificationType(juce::Justification::centred);
+    
+    addAndMakeVisible(infoLabel);
+    infoLabel.setText("Type the URL above into your phone's browser", juce::dontSendNotification);
+    infoLabel.setFont(juce::FontOptions(12.0f));
+    infoLabel.setColour(juce::Label::textColourId, juce::Colours::darkgrey);
+    infoLabel.setJustificationType(juce::Justification::centred);
+    
+    startTimer(200);
 }
 
 FAUNAAudioProcessorEditor::~FAUNAAudioProcessorEditor()
@@ -56,89 +56,39 @@ FAUNAAudioProcessorEditor::~FAUNAAudioProcessorEditor()
 
 void FAUNAAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.fillAll(juce::Colour(0xFF0d0d0d));
-    
-    int centerX = getWidth() / 2;
-    
-    g.setColour(juce::Colour(0xFFD4AF00));
-    g.setFont(titleFont);
-    g.drawText("FAUNA", 0, 30, getWidth(), 70, juce::Justification::centred, false);
-    
-    int boxSize = 180;
-    int boxX = centerX - boxSize / 2;
-    int boxY = 120;
-    
-    g.setColour(juce::Colour(0xFF1a1a1a));
-    g.fillRect(boxX, boxY, boxSize, boxSize);
-    
-    g.setColour(juce::Colour(0xFFD4AF00));
-    g.drawRect(boxX, boxY, boxSize, boxSize, 3);
-    
-    if (!lastURL.isEmpty() && lastURL != "http://--.--.--.--:8080")
-    {
-        drawQRCode(g, lastURL, boxX + 10, boxY + 10, boxSize - 20);
-    }
-}
-
-void FAUNAAudioProcessorEditor::drawQRCode(juce::Graphics& g, const juce::String& url, int x, int y, int size)
-{
-    if (url.isEmpty()) return;
-    
-    try {
-        qrcodegen::QrCode qr = qrcodegen::QrCode::encodeText(url.toUTF8(), qrcodegen::QrCode::Ecc::LOW);
-        int qrSize = qr.getSize();
-        int moduleSize = size / qrSize;
-        
-        g.setColour(juce::Colours::white);
-        g.fillRect(x, y, size, size);
-        
-        g.setColour(juce::Colours::black);
-        for (int row = 0; row < qrSize; row++)
-        {
-            for (int col = 0; col < qrSize; col++)
-            {
-                if (qr.getModule(col, row))
-                {
-                    g.fillRect(x + col * moduleSize, y + row * moduleSize, moduleSize, moduleSize);
-                }
-            }
-        }
-        qrCodeValid = true;
-    }
-    catch (const std::exception&) {
-        qrCodeValid = false;
-    }
+    g.fillAll (juce::Colours::darkblue.darker());
 }
 
 void FAUNAAudioProcessorEditor::resized()
 {
-    int w = getWidth();
+    auto bounds = getLocalBounds();
+    bounds.reduce(20, 20);
     
-    urlLabel.setBounds(0, 320, w, 30);
+    titleLabel.setBounds(bounds.removeFromTop(40));
+    statusLabel.setBounds(bounds.removeFromTop(30));
     
-    int bottomY = 360;
-    int labelWidth = w / 3;
+    bounds.removeFromTop(20);
     
-    sampleRateLabel.setBounds(0, bottomY, labelWidth, 20);
-    bufferSizeLabel.setBounds(labelWidth, bottomY, labelWidth, 20);
-    portLabel.setBounds(labelWidth * 2, bottomY, labelWidth, 20);
+    ipLabel.setBounds(bounds.removeFromTop(30));
+    urlLabel.setBounds(bounds.removeFromTop(25));
+    urlBigLabel.setBounds(bounds.removeFromTop(45));
     
-    statusLabel.setBounds(0, 100, w, 20);
-    devicesLabel.setBounds(0, 125, w, 20);
+    clientsLabel.setBounds(bounds.removeFromTop(30));
+    infoLabel.setBounds(bounds.removeFromTop(30));
 }
 
 void FAUNAAudioProcessorEditor::timerCallback()
 {
     static bool ipDetected = false;
-    
-    if (audioProcessor.isShuttingDown)
-    {
-        return;
-    }
+    static int attemptCount = 0;
     
     if (!audioProcessor.isServerRunning())
     {
-        statusLabel.setText("Server: Starting...", juce::dontSendNotification);
+        attemptCount++;
+        if (attemptCount <= 10)
+        {
+            statusLabel.setText("Server: Starting... (" + juce::String(attemptCount) + ")", juce::dontSendNotification);
+        }
         return;
     }
     
@@ -149,32 +99,14 @@ void FAUNAAudioProcessorEditor::timerCallback()
     }
     
     statusLabel.setText("Server: Running", juce::dontSendNotification);
-    statusLabel.setColour(juce::Label::textColourId, juce::Colour(0xFF00FF88));
+    statusLabel.setColour(juce::Label::textColourId, juce::Colours::green);
     
     juce::String ip = audioProcessor.httpServer.getLocalIPAddress();
     juce::String urlText = "http://" + ip + ":8080";
     
-    if (urlText != lastURL)
-    {
-        lastURL = urlText;
-        qrCodeValid = false;
-        repaint();
-    }
+    ipLabel.setText("IP: " + ip, juce::dontSendNotification);
+    urlBigLabel.setText(urlText, juce::dontSendNotification);
     
-    urlLabel.setText(urlText, juce::dontSendNotification);
-    
-    int sr = (int)audioProcessor.getSampleRate();
-    int bs = audioProcessor.getBlockSize();
-    int pt = audioProcessor.getServerPort();
-    
-    sampleRateLabel.setText(juce::String(sr) + " Hz", juce::dontSendNotification);
-    bufferSizeLabel.setText("Buffer: " + juce::String(bs), juce::dontSendNotification);
-    portLabel.setText("Port: " + juce::String(pt), juce::dontSendNotification);
-    
-    int connected = audioProcessor.getConnectedClients();
-    devicesLabel.setText("Devices: " + juce::String(connected), juce::dontSendNotification);
-    if (connected > 0)
-        devicesLabel.setColour(juce::Label::textColourId, juce::Colour(0xFF00FF88));
-    else
-        devicesLabel.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
+    juce::String clientText = "Connected: " + juce::String(audioProcessor.getConnectedClients()) + " device(s)";
+    clientsLabel.setText(clientText, juce::dontSendNotification);
 }
