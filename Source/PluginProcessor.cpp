@@ -84,6 +84,13 @@ void FAUNAAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
 
     if (isShuttingDown) return;
 
+    static int pbCount = 0;
+    pbCount++;
+    if (pbCount == 1)
+        OutputDebugString(("FAUNA: processBlock first call, samples=" + juce::String(buffer.getNumSamples()) + "\n").toUTF8());
+    if (pbCount % 500 == 0)
+        OutputDebugString(("FAUNA: processBlock count=" + juce::String(pbCount) + "\n").toUTF8());
+
     const int numSamples  = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();
 

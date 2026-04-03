@@ -513,12 +513,18 @@ void HTTPServer::sendSampleRateMessage(AudioClient& client)
 //==============================================================================
 void HTTPServer::broadcastAudio(const float* audioData, int numSamples)
 {
+    static int baCount = 0;
+    baCount++;
+
     int numFloats = numSamples * 2;
     int byteCount = numFloats * sizeof(float);
 
     juce::ScopedLock lock(clientsLock);
 
     if (audioClients.size() == 0) return;
+
+    if (baCount == 1)
+        OutputDebugString(("FAUNA: broadcastAudio first call, clients=" + juce::String(audioClients.size()) + ", samples=" + juce::String(numSamples) + "\n").toUTF8());
 
     for (int i = audioClients.size() - 1; i >= 0; i--)
     {
@@ -537,6 +543,7 @@ void HTTPServer::broadcastAudio(const float* audioData, int numSamples)
         // its AudioContext at the correct rate before audio starts flowing.
         if (!client.sampleRateSent)
         {
+            OutputDebugString(("FAUNA: broadcastAudio - sending init message to client " + client.ipAddress + "\n").toUTF8());
             sendSampleRateMessage(client);
             client.sampleRateSent = true;
             continue; // audio starts next callback (~10ms later)
