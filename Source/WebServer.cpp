@@ -361,8 +361,10 @@ juce::String HTTPServer::getHTMLPage()
     html+="var abuf=audioCtx.createBuffer(2,numFrames,SAMPLE_RATE);";
     html+="var L=abuf.getChannelData(0),R=abuf.getChannelData(1);";
     html+="for(var i=0;i<numFrames;i++){L[i]=floats[i*2];R[i]=floats[i*2+1];}";
+    html+="if(nextPlayTime<audioCtx.currentTime+0.04)nextPlayTime=audioCtx.currentTime+0.04;";
     html+="var src=audioCtx.createBufferSource();";
-    html+="src.buffer=abuf;src.connect(audioCtx.destination);src.start(0);";
+    html+="src.buffer=abuf;src.connect(audioCtx.destination);src.start(nextPlayTime);";
+    html+="nextPlayTime+=abuf.duration;";
     html+="var mx=0;for(var i=0;i<Math.min(200,L.length);i++){var av=Math.abs(L[i]);if(av>mx)mx=av;}";
     html+="document.getElementById('levelBar').style.width=(mx*100)+'%';";
     html+="};";
