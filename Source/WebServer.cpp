@@ -90,6 +90,7 @@ void HTTPServer::stop()
     juce::ScopedLock lock(clientsLock);
     for(auto& c:audioClients) if(c.socket!=INVALID_SOCKET){shutdown(c.socket,SD_BOTH);closesocket(c.socket);c.socket=INVALID_SOCKET;}
     audioClients.clear();
+    connectedClientCount.store(0);
 }
 
 DWORD WINAPI HTTPServer::serverThreadFunc(LPVOID p){return ((HTTPServer*)p)->serverThread();}
@@ -98,23 +99,66 @@ DWORD HTTPServer::serverThread()
 {
     DWORD timeout=100;
     setsockopt(serverSocket,SOL_SOCKET,SO_RCVTIMEO,(const char*)&timeout,sizeof(timeout));
-    while(running&&serverSocket!=INVALID_SOCKET)
+
+    while(running && serverSocket!=INVALID_SOCKET)
     {
         sockaddr_in ca; int cl=sizeof(ca);
         SOCKET cs=accept(serverSocket,(sockaddr*)&ca,&cl);
         if(cs!=INVALID_SOCKET) handleClient(cs);
+
+        // Copy socket handles out before releasing lock — never hold lock during recv()
+        juce::Array<SOCKET> socketsToCheck;
         {
             juce::ScopedLock lock(clientsLock);
-            for(int i=audioClients.size()-1;i>=0;i--)
+            for(int i=0;i<audioClients.size();++i)
+                socketsToCheck.add(audioClients.getReference(i).socket);
+        }
+
+        for(int i=0;i<socketsToCheck.size();++i)
+        {
+            SOCKET s=socketsToCheck[i];
+            if(s==INVALID_SOCKET) continue;
+
+            fd_set rs; FD_ZERO(&rs); FD_SET(s,&rs);
+            TIMEVAL tv={0,0};
+            int r=select(0,&rs,nullptr,nullptr,&tv);
+
+            if(r>0)
             {
-                AudioClient& c=audioClients.getReference(i);
-                if(c.socket==INVALID_SOCKET){audioClients.remove(i);continue;}
-                fd_set rs; FD_ZERO(&rs); FD_SET(c.socket,&rs);
-                TIMEVAL tv={0,0};
-                int r=select(0,&rs,nullptr,nullptr,&tv);
-                if(r>0) handleWebSocketClient(c);
-                else if(r<0) audioClients.remove(i);
+                // Re-acquire lock only to find the client, then handle it
+                juce::ScopedLock lock(clientsLock);
+                for(int j=audioClients.size()-1;j>=0;--j)
+                {
+                    AudioClient& c=audioClients.getReference(j);
+                    if(c.socket==s)
+                    {
+                        handleWebSocketClient(c);
+                        break;
+                    }
+                }
             }
+            else if(r<0)
+            {
+                juce::ScopedLock lock(clientsLock);
+                for(int j=audioClients.size()-1;j>=0;--j)
+                {
+                    if(audioClients.getReference(j).socket==s)
+                    {
+                        audioClients.remove(j);
+                        connectedClientCount.store(audioClients.size());
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Clean up any sockets marked invalid during handling
+        {
+            juce::ScopedLock lock(clientsLock);
+            for(int i=audioClients.size()-1;i>=0;--i)
+                if(audioClients.getReference(i).socket==INVALID_SOCKET)
+                    audioClients.remove(i);
+            connectedClientCount.store(audioClients.size());
         }
     }
     return 0;
@@ -171,6 +215,7 @@ void HTTPServer::handleClient(SOCKET clientSocket)
         }
         juce::ScopedLock lock(clientsLock);
         audioClients.add(client);
+        connectedClientCount.store(audioClients.size());
         OutputDebugString(("FAUNA: Client connected. Total: "+juce::String(audioClients.size())+"\n").toUTF8());
     }
     else
@@ -227,7 +272,7 @@ void HTTPServer::broadcastAudio(const float* audioData, int numSamples)
     for(int i=audioClients.size()-1;i>=0;i--)
     {
         AudioClient& client=audioClients.getReference(i);
-        if(client.socket==INVALID_SOCKET){audioClients.remove(i);continue;}
+        if(client.socket==INVALID_SOCKET){audioClients.remove(i);connectedClientCount.store(audioClients.size());continue;}
         if(!client.isWebSocket) continue;
 
         if(!client.sampleRateSent)
@@ -257,14 +302,37 @@ void HTTPServer::writeAudioData(const float* audioData, int numSamples)
 void HTTPServer::sendWebSocketFrame(SOCKET socket, const char* data, int length, int opcode)
 {
     if(socket==INVALID_SOCKET) return;
+
     int hlen=2;
     if(length>=126&&length<65536) hlen=4;
-    else if(length>=65536) hlen=10;
+    else if(length>=65536)        hlen=10;
+
     juce::HeapBlock<char> frame(hlen+length);
     frame[0]=(char)(0x80|(opcode&0x0F));
-    if(length<126){frame[1]=(char)(length&0x7F);}
-    else if(length<65536){frame[1]=126;frame[2]=(char)((length>>8)&0xFF);frame[3]=(char)(length&0xFF);}
-    else{frame[1]=127;for(int i=0;i<6;i++)frame[2+i]=0;frame[8]=(char)((length>>8)&0xFF);frame[9]=(char)(length&0xFF);}
+
+    if(length<126)
+    {
+        frame[1]=(char)(length&0x7F);
+    }
+    else if(length<65536)
+    {
+        frame[1]=126;
+        frame[2]=(char)((length>>8)&0xFF);
+        frame[3]=(char)(length&0xFF);
+    }
+    else
+    {
+        frame[1]=127;
+        frame[2]=0;
+        frame[3]=0;
+        frame[4]=0;
+        frame[5]=0;
+        frame[6]=(char)((length>>24)&0xFF);
+        frame[7]=(char)((length>>16)&0xFF);
+        frame[8]=(char)((length>>8) &0xFF);
+        frame[9]=(char)(length      &0xFF);
+    }
+
     if(length>0&&data!=nullptr) memcpy(frame.get()+hlen,data,length);
     send(socket,frame.get(),hlen+length,0);
 }

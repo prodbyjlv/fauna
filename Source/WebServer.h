@@ -1,9 +1,8 @@
 #pragma once
-
 #include <JuceHeader.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
-
+#include <atomic>
 #pragma comment(lib, "ws2_32.lib")
 
 class AudioClient
@@ -28,15 +27,15 @@ public:
 
     bool isRunning() const { return running; }
     int getPort() const { return port; }
-    int getConnectedClients() const { return audioClients.size(); }
+    int getConnectedClients() const { return connectedClientCount.load(); }
+
     void detectLocalIP();
     juce::String getLocalIPAddress() const { return localIP; }
-    float getCurrentLevel() const { return currentLevel; }
 
+    float getCurrentLevel() const { return currentLevel; }
     void setMuteState(int clientId, bool muted) {}
     void writeAudioData(const float* audioData, int numSamples);
     void setLevel(float level) { currentLevel = level; }
-
     void setSampleRate(double sr) { sampleRate = sr; }
 
 private:
@@ -60,8 +59,10 @@ private:
 
     SOCKET serverSocket = INVALID_SOCKET;
     HANDLE serverThreadHandle = NULL;
+
     juce::Array<AudioClient> audioClients;
     juce::CriticalSection clientsLock;
+    std::atomic<int> connectedClientCount = 0;
 
     JUCE_LEAK_DETECTOR(HTTPServer)
 };

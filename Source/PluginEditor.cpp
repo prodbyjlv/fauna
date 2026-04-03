@@ -82,30 +82,34 @@ void FAUNAAudioProcessorEditor::timerCallback()
 {
     static bool ipDetected = false;
     static int attemptCount = 0;
-    
+    static juce::String lastUrl = "";
+
     if (!audioProcessor.isServerRunning())
     {
         attemptCount++;
         if (attemptCount <= 10)
-        {
             urlLabel.setText("Starting... (" + juce::String(attemptCount) + ")", juce::dontSendNotification);
-        }
         return;
     }
-    
+
     if (!ipDetected)
     {
         audioProcessor.httpServer.detectLocalIP();
         ipDetected = true;
     }
-    
+
     juce::String ip = audioProcessor.httpServer.getLocalIPAddress();
     juce::String urlText = "http://" + ip + ":8080";
-    
+
     urlLabel.setText(urlText, juce::dontSendNotification);
-    
-    qrCode.generate(urlText);
-    
+
+    // Only regenerate QR code if URL has changed — avoids wasteful redraws every 200ms
+    if (urlText != lastUrl)
+    {
+        qrCode.generate(urlText);
+        lastUrl = urlText;
+    }
+
     juce::String clientText = "Connected: " + juce::String(audioProcessor.getConnectedClients()) + " device(s)";
     connectedLabel.setText(clientText, juce::dontSendNotification);
 }
