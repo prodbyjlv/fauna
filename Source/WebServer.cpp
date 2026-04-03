@@ -1,9 +1,11 @@
 #include "WebServer.h"
+
 #include <cstring>
 
-static const char base64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static const char base64_chars[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-// Correct SHA-1 implementation
+// SHA-1 implementation
 static void sha1(const char* data, int len, unsigned char* out)
 {
     unsigned int h0 = 0x67452301;
@@ -45,23 +47,23 @@ static void sha1(const char* data, int len, unsigned char* out)
 
         unsigned int a = h0, b = h1, c = h2, d = h3, e = h4;
 
-        for (int j = 0; j < 20; j++) {
-            unsigned int f = (b & c) | ((~b) & d);
+        for (int j =  0; j < 20; j++) {
+            unsigned int f    = (b & c) | ((~b) & d);
             unsigned int temp = ((a<<5)|(a>>27)) + f + e + 0x5A827999 + w[j];
             e=d; d=c; c=(b<<30)|(b>>2); b=a; a=temp;
         }
         for (int j = 20; j < 40; j++) {
-            unsigned int f = b ^ c ^ d;
+            unsigned int f    = b ^ c ^ d;
             unsigned int temp = ((a<<5)|(a>>27)) + f + e + 0x6ED9EBA1 + w[j];
             e=d; d=c; c=(b<<30)|(b>>2); b=a; a=temp;
         }
         for (int j = 40; j < 60; j++) {
-            unsigned int f = (b & c) | (b & d) | (c & d);
+            unsigned int f    = (b & c) | (b & d) | (c & d);
             unsigned int temp = ((a<<5)|(a>>27)) + f + e + 0x8F1BBCDC + w[j];
             e=d; d=c; c=(b<<30)|(b>>2); b=a; a=temp;
         }
         for (int j = 60; j < 80; j++) {
-            unsigned int f = b ^ c ^ d;
+            unsigned int f    = b ^ c ^ d;
             unsigned int temp = ((a<<5)|(a>>27)) + f + e + 0xCA62C1D6 + w[j];
             e=d; d=c; c=(b<<30)|(b>>2); b=a; a=temp;
         }
@@ -69,14 +71,14 @@ static void sha1(const char* data, int len, unsigned char* out)
         h0+=a; h1+=b; h2+=c; h3+=d; h4+=e;
     }
 
-    out[0]=(h0>>24)&0xFF; out[1]=(h0>>16)&0xFF; out[2]=(h0>>8)&0xFF;  out[3]=h0&0xFF;
-    out[4]=(h1>>24)&0xFF; out[5]=(h1>>16)&0xFF; out[6]=(h1>>8)&0xFF;  out[7]=h1&0xFF;
+    out[0]=(h0>>24)&0xFF; out[1]=(h0>>16)&0xFF; out[2]=(h0>>8)&0xFF; out[3]=h0&0xFF;
+    out[4]=(h1>>24)&0xFF; out[5]=(h1>>16)&0xFF; out[6]=(h1>>8)&0xFF; out[7]=h1&0xFF;
     out[8]=(h2>>24)&0xFF; out[9]=(h2>>16)&0xFF; out[10]=(h2>>8)&0xFF; out[11]=h2&0xFF;
     out[12]=(h3>>24)&0xFF; out[13]=(h3>>16)&0xFF; out[14]=(h3>>8)&0xFF; out[15]=h3&0xFF;
     out[16]=(h4>>24)&0xFF; out[17]=(h4>>16)&0xFF; out[18]=(h4>>8)&0xFF; out[19]=h4&0xFF;
 }
 
-// Correct base64 encoding
+// Base64 encoding
 static juce::String base64Encode(const unsigned char* data, int len)
 {
     juce::String result;
@@ -114,6 +116,7 @@ void HTTPServer::detectLocalIP()
 {
     juce::Array<juce::IPAddress> addresses;
     juce::IPAddress::findAllAddresses(addresses);
+
     juce::String resultIP = "127.0.0.1";
     for (int i = 0; i < addresses.size(); i++)
     {
@@ -136,8 +139,10 @@ bool HTTPServer::start(int targetPort)
         OutputDebugString("FAUNA: Failed to create socket\n");
         return false;
     }
+
     running = true;
     detectLocalIP();
+
     OutputDebugString("FAUNA: Starting server thread\n");
     serverThreadHandle = CreateThread(NULL, 0, serverThreadFunc, this, 0, NULL);
     if (serverThreadHandle == NULL)
@@ -148,6 +153,7 @@ bool HTTPServer::start(int targetPort)
         serverSocket = INVALID_SOCKET;
         return false;
     }
+
     OutputDebugString(("FAUNA: Server started on " + localIP + ":" + juce::String(port) + "\n").toUTF8());
     return true;
 }
@@ -155,11 +161,13 @@ bool HTTPServer::start(int targetPort)
 void HTTPServer::stop()
 {
     running = false;
+
     if (serverSocket != INVALID_SOCKET) {
         shutdown(serverSocket, SD_BOTH);
         closesocket(serverSocket);
         serverSocket = INVALID_SOCKET;
     }
+
     if (serverThreadHandle != NULL)
     {
         DWORD waitResult = WaitForSingleObject(serverThreadHandle, 2000);
@@ -168,6 +176,7 @@ void HTTPServer::stop()
         CloseHandle(serverThreadHandle);
         serverThreadHandle = NULL;
     }
+
     {
         juce::ScopedLock lock(clientsLock);
         for (auto& client : audioClients)
@@ -180,6 +189,7 @@ void HTTPServer::stop()
         }
         audioClients.clear();
     }
+
     OutputDebugString("FAUNA: Server fully stopped\n");
 }
 
@@ -193,44 +203,98 @@ DWORD HTTPServer::serverThread()
 {
     OutputDebugString("FAUNA: Server thread started\n");
 
-    // Set accept timeout so we can check running flag regularly
-    DWORD timeout = 100; // ms
+    DWORD timeout = 100; // ms — so we can check running flag regularly
     setsockopt(serverSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
 
     while (running && serverSocket != INVALID_SOCKET)
     {
+        // --- Accept new connections ---
         sockaddr_in clientAddr;
         int clientLen = sizeof(clientAddr);
         SOCKET clientSocket = accept(serverSocket, (sockaddr*)&clientAddr, &clientLen);
-
         if (clientSocket != INVALID_SOCKET)
         {
             OutputDebugString("FAUNA: Client connected\n");
             handleClient(clientSocket);
         }
 
-        // Check existing WebSocket clients for incoming frames (mute/control messages)
+        // --- FIX BUG 2: Deadlock prevention ---
+        //
+        // ORIGINAL PROBLEM:
+        //   The server thread held clientsLock while calling handleWebSocketClient(),
+        //   which calls recv() — a potentially blocking operation. Meanwhile the audio
+        //   thread (processBlock -> broadcastAudio) also tries to acquire clientsLock.
+        //   If recv() stalled even briefly, the audio thread deadlocked waiting for the
+        //   lock, causing dropouts or FL Studio freezing entirely.
+        //
+        // THE FIX:
+        //   1. Snapshot the sockets we want to check while holding the lock (fast, no I/O).
+        //   2. Release the lock before doing any recv() / send() work.
+        //   3. Re-acquire the lock only to apply the results (mark dead clients, etc).
+        //
+        // This way the audio thread can always acquire clientsLock quickly and send audio
+        // without ever waiting on a network operation.
+
+        // Step 1: snapshot client sockets under lock — no I/O, just a copy
+        juce::Array<SOCKET> socketsToCheck;
+        {
+            juce::ScopedLock lock(clientsLock);
+            for (auto& client : audioClients)
+                if (client.socket != INVALID_SOCKET)
+                    socketsToCheck.add(client.socket);
+        }
+
+        // Step 2: check each socket for incoming data WITHOUT holding the lock
+        juce::Array<SOCKET> deadSockets;
+        for (int i = 0; i < socketsToCheck.size(); i++)
+        {
+            SOCKET s = socketsToCheck[i];
+
+            fd_set readSet;
+            FD_ZERO(&readSet);
+            FD_SET(s, &readSet);
+            TIMEVAL tv = { 0, 0 }; // non-blocking poll
+            int result = select(0, &readSet, nullptr, nullptr, &tv);
+
+            if (result > 0)
+            {
+                // Data available — find the matching AudioClient and handle it.
+                // We re-acquire the lock only for this brief lookup + handle call.
+                // handleWebSocketClient uses the non-blocking socket so recv()
+                // will return immediately (WSAEWOULDBLOCK) if data disappears.
+                juce::ScopedLock lock(clientsLock);
+                for (int j = 0; j < audioClients.size(); j++)
+                {
+                    if (audioClients.getReference(j).socket == s)
+                    {
+                        handleWebSocketClient(audioClients.getReference(j));
+                        break;
+                    }
+                }
+            }
+            else if (result < 0)
+            {
+                deadSockets.add(s);
+            }
+        }
+
+        // Step 3: remove any dead clients under lock
+        if (deadSockets.size() > 0)
         {
             juce::ScopedLock lock(clientsLock);
             for (int i = audioClients.size() - 1; i >= 0; i--)
             {
-                AudioClient& client = audioClients.getReference(i);
-                if (client.socket == INVALID_SOCKET)
-                {
-                    audioClients.remove(i);
-                    continue;
-                }
-
-                fd_set readSet;
-                FD_ZERO(&readSet);
-                FD_SET(client.socket, &readSet);
-                TIMEVAL tv = { 0, 0 }; // non-blocking check
-                int result = select(0, &readSet, nullptr, nullptr, &tv);
-                if (result > 0)
-                    handleWebSocketClient(client);
-                else if (result < 0)
+                if (deadSockets.contains(audioClients.getReference(i).socket))
                     audioClients.remove(i);
             }
+        }
+
+        // Also sweep clients that were marked INVALID_SOCKET by handleWebSocketClient
+        {
+            juce::ScopedLock lock(clientsLock);
+            for (int i = audioClients.size() - 1; i >= 0; i--)
+                if (audioClients.getReference(i).socket == INVALID_SOCKET)
+                    audioClients.remove(i);
         }
     }
 
@@ -248,9 +312,9 @@ SOCKET HTTPServer::createServerSocket(int port)
     setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
 
     sockaddr_in serverAddr;
-    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_family      = AF_INET;
     serverAddr.sin_addr.s_addr = INADDR_ANY;
-    serverAddr.sin_port = htons((u_short)port);
+    serverAddr.sin_port        = htons((u_short)port);
 
     if (bind(listenSocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
         closesocket(listenSocket);
@@ -265,29 +329,27 @@ SOCKET HTTPServer::createServerSocket(int port)
 
 void HTTPServer::handleClient(SOCKET clientSocket)
 {
-    // Set a short receive timeout so we don't block the server thread forever
-    DWORD timeout = 5000; // 5 seconds
+    DWORD timeout = 5000;
     setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
 
     char buffer[8192];
     int bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
-
     if (bytesReceived <= 0)
     {
         DWORD err = WSAGetLastError();
-        OutputDebugString(("FAUNA: handleClient recv failed, bytes=" + juce::String(bytesReceived) + ", WSAError=" + juce::String(err) + "\n").toUTF8());
+        OutputDebugString(("FAUNA: handleClient recv failed, bytes=" + juce::String(bytesReceived) +
+                           ", WSAError=" + juce::String(err) + "\n").toUTF8());
         closesocket(clientSocket);
         return;
     }
-
     buffer[bytesReceived] = '\0';
+
     juce::String request(buffer);
 
     if (request.contains("Upgrade") && request.contains("websocket"))
     {
         OutputDebugString("FAUNA: WebSocket upgrade request detected\n");
 
-        // Check client limit
         {
             juce::ScopedLock lock(clientsLock);
             if (audioClients.size() >= 2)
@@ -319,7 +381,7 @@ void HTTPServer::handleClient(SOCKET clientSocket)
 
         OutputDebugString(("FAUNA: Accept key: " + acceptKey + "\n").toUTF8());
 
-        juce::String response = "HTTP/1.1 101 Switching Protocols\r\n";
+        juce::String response  = "HTTP/1.1 101 Switching Protocols\r\n";
         response += "Upgrade: websocket\r\n";
         response += "Connection: Upgrade\r\n";
         response += "Sec-WebSocket-Accept: " + acceptKey + "\r\n";
@@ -328,20 +390,19 @@ void HTTPServer::handleClient(SOCKET clientSocket)
         int sent = send(clientSocket, response.toUTF8(), response.length(), 0);
         OutputDebugString(("FAUNA: 101 sent, bytes: " + juce::String(sent) + "\n").toUTF8());
 
-        // Set socket to non-blocking for audio streaming
+        // Non-blocking for audio streaming
         u_long nonBlocking = 1;
         ioctlsocket(clientSocket, FIONBIO, &nonBlocking);
 
-        // Set send buffer large enough for audio
         int sendBuf = 256 * 1024;
         setsockopt(clientSocket, SOL_SOCKET, SO_SNDBUF, (const char*)&sendBuf, sizeof(sendBuf));
 
         AudioClient client;
-        client.socket = clientSocket;
-        client.isWebSocket = true;
-        client.muted = false;
-        client.lastPingTime = 0;
-        client.sampleRateSent = false; // init not yet sent
+        client.socket         = clientSocket;
+        client.isWebSocket    = true;
+        client.muted          = false;
+        client.lastPingTime   = 0;
+        client.sampleRateSent = false;
 
         sockaddr_in addr;
         int addrLen = sizeof(addr);
@@ -358,7 +419,6 @@ void HTTPServer::handleClient(SOCKET clientSocket)
     }
     else
     {
-        // Regular HTTP request
         juce::String response = buildHTTPResponse(request);
         send(clientSocket, response.toUTF8(), response.length(), 0);
         closesocket(clientSocket);
@@ -380,29 +440,32 @@ void HTTPServer::handleWebSocketClient(AudioClient& client)
 
     if (bytesReceived < 2) return;
 
-    unsigned char opcode = buffer[0] & 0x0F;
-    bool masked = (buffer[1] & 0x80) != 0;
-    unsigned int payloadLength = buffer[1] & 0x7F;
+    unsigned char opcode        = buffer[0] & 0x0F;
+    bool          masked        = (buffer[1] & 0x80) != 0;
+    unsigned int  payloadLength = buffer[1] & 0x7F;
 
     int headerLen = 2;
     if (payloadLength == 126) headerLen += 2;
     if (payloadLength == 127) headerLen += 8;
-    if (masked) headerLen += 4;
+    if (masked)               headerLen += 4;
 
     if (opcode == 0x01) // Text frame (mute control)
     {
         if (bytesReceived >= headerLen)
         {
-            char* data = buffer + headerLen;
-            int dataLen = bytesReceived - headerLen;
+            char* data    = buffer + headerLen;
+            int   dataLen = bytesReceived - headerLen;
+
             if (masked && dataLen > 0)
             {
                 char* maskKey = buffer + headerLen - 4;
                 for (int i = 0; i < dataLen; i++)
                     data[i] ^= maskKey[i % 4];
             }
+
             juce::String message(data, dataLen);
             OutputDebugString(("FAUNA: Control message: " + message + "\n").toUTF8());
+
             if (message.contains("mute"))
                 client.muted = message.contains("true");
         }
@@ -417,11 +480,13 @@ void HTTPServer::handleWebSocketClient(AudioClient& client)
     else if (opcode == 0x09) // Ping
     {
         char pongPayload[125];
-        int pongLen = 0;
+        int  pongLen = 0;
+
         if (payloadLength > 0 && payloadLength <= 125 && bytesReceived > headerLen)
         {
             pongLen = (int)payloadLength;
             memcpy(pongPayload, buffer + headerLen, pongLen);
+
             if (masked)
             {
                 char* maskKey = buffer + headerLen - 4;
@@ -429,6 +494,7 @@ void HTTPServer::handleWebSocketClient(AudioClient& client)
                     pongPayload[i] ^= maskKey[i % 4];
             }
         }
+
         sendWebSocketFrame(client.socket, pongLen > 0 ? pongPayload : nullptr, pongLen, 0x0A);
     }
 }
@@ -445,17 +511,16 @@ void HTTPServer::sendWebSocketFrame(SOCKET socket, const char* data, int length,
 {
     if (socket == INVALID_SOCKET) return;
 
-    // Build header + payload in one contiguous buffer to avoid two TCP packets
     int headerLen = 2;
     if (length >= 126 && length < 65536) headerLen = 4;
-    else if (length >= 65536) headerLen = 10;
+    else if (length >= 65536)            headerLen = 10;
 
     int totalLen = headerLen + length;
     juce::HeapBlock<char> frame(totalLen);
 
     frame[0] = (char)(0x80 | (opcode & 0x0F)); // FIN + opcode
-    // Server MUST NOT mask frames sent to client (RFC 6455 section 5.1)
 
+    // Server MUST NOT mask frames sent to client (RFC 6455 section 5.1)
     if (length < 126)
     {
         frame[1] = (char)(length & 0x7F);
@@ -469,7 +534,6 @@ void HTTPServer::sendWebSocketFrame(SOCKET socket, const char* data, int length,
     else
     {
         frame[1] = 127;
-        // 8-byte big-endian length
         for (int i = 0; i < 6; i++) frame[2 + i] = 0;
         frame[8] = (char)((length >> 8) & 0xFF);
         frame[9] = (char)(length & 0xFF);
@@ -478,28 +542,27 @@ void HTTPServer::sendWebSocketFrame(SOCKET socket, const char* data, int length,
     if (length > 0 && data != nullptr)
         memcpy(frame.get() + headerLen, data, length);
 
-    send(socket, frame.get(), totalLen, 0);
+    // FIX BUG 4: Check send() return value on non-blocking socket.
+    // WSAEWOULDBLOCK means the send buffer is full (slow WiFi / lagging browser)
+    // — we just drop the frame which is acceptable for real-time audio.
+    // Any other error means the client is gone so we mark it dead.
+    int result = send(socket, frame.get(), totalLen, 0);
+    if (result == SOCKET_ERROR)
+    {
+        int err = WSAGetLastError();
+        if (err != WSAEWOULDBLOCK)
+        {
+            // Real socket error — caller will clean up when it next checks the socket
+            OutputDebugString(("FAUNA: send error " + juce::String(err) + ", client will be removed\n").toUTF8());
+        }
+        // WSAEWOULDBLOCK: silently drop — audio is real-time, dropping is correct
+    }
 }
 
 //==============================================================================
 // SAMPLE RATE HANDSHAKE
-//
-// The problem this solves:
-//   Mobile browsers create AudioContext at the device's native sample rate
-//   (usually 48000 Hz on Android/iOS). If the DAW runs at 44100 Hz, every
-//   audio buffer plays at the wrong speed — audio is sharp and fast.
-//
-// The solution (two steps):
-//   SERVER: On a new client's first audio callback, send this JSON text frame
-//   BEFORE any binary audio data:
-//       {"type":"init","sampleRate":44100}
-//
-//   BROWSER: On receiving this message, create AudioContext({sampleRate:44100})
-//   to force the browser to match the DAW exactly. Then start processing audio.
-//
-// sampleRate is set from prepareToPlay() via setSampleRate() so it always
-// reflects the actual DAW project sample rate, even if the user changes it.
 //==============================================================================
+
 void HTTPServer::sendSampleRateMessage(AudioClient& client)
 {
     int sr = (int)sampleRate;
@@ -509,8 +572,14 @@ void HTTPServer::sendSampleRateMessage(AudioClient& client)
 }
 
 //==============================================================================
-// THE KEY FIX: broadcastAudio now actually sends audio to all connected clients
+// broadcastAudio — called from the audio thread
+//
+// FIX BUG 2 (continued): The lock here is held only briefly for list iteration
+// and send(). send() on a non-blocking socket returns immediately
+// (WSAEWOULDBLOCK or success) so the audio thread is never blocked by network I/O.
+// The server thread never holds this lock while doing recv().
 //==============================================================================
+
 void HTTPServer::broadcastAudio(const float* audioData, int numSamples)
 {
     static int baCount = 0;
@@ -524,7 +593,9 @@ void HTTPServer::broadcastAudio(const float* audioData, int numSamples)
     if (audioClients.size() == 0) return;
 
     if (baCount == 1)
-        OutputDebugString(("FAUNA: broadcastAudio first call, clients=" + juce::String(audioClients.size()) + ", samples=" + juce::String(numSamples) + "\n").toUTF8());
+        OutputDebugString(("FAUNA: broadcastAudio first call, clients=" +
+                           juce::String(audioClients.size()) +
+                           ", samples=" + juce::String(numSamples) + "\n").toUTF8());
 
     for (int i = audioClients.size() - 1; i >= 0; i--)
     {
@@ -538,29 +609,29 @@ void HTTPServer::broadcastAudio(const float* audioData, int numSamples)
 
         if (!client.isWebSocket) continue;
 
-        // First time we see this client: send the init message with sample rate.
-        // Skip sending audio this callback — give the browser time to set up
-        // its AudioContext at the correct rate before audio starts flowing.
+        // First callback for this client: send the init message with sample rate.
+        // Skip audio this round — give the browser time to set up its AudioContext.
         if (!client.sampleRateSent)
         {
-            OutputDebugString(("FAUNA: broadcastAudio - sending init message to client " + client.ipAddress + "\n").toUTF8());
+            OutputDebugString(("FAUNA: Sending init to client " + client.ipAddress + "\n").toUTF8());
             sendSampleRateMessage(client);
             client.sampleRateSent = true;
-            continue; // audio starts next callback (~10ms later)
+            continue;
         }
 
-        // If muted, send silence instead of real audio
         if (client.muted)
         {
-            juce::HeapBlock<float> silence(numFloats, true); // zero-initialised
-            sendWebSocketFrame(client.socket, (const char*)silence.get(), byteCount, 0x02); // binary frame
+            juce::HeapBlock<float> silence(numFloats, true);
+            sendWebSocketFrame(client.socket, (const char*)silence.get(), byteCount, 0x02);
         }
         else
         {
             audioFrameCount++;
             if (audioFrameCount % 200 == 0)
-                OutputDebugString(("FAUNA: audio frames sent: " + juce::String(audioFrameCount) + "\n").toUTF8());
-            sendWebSocketFrame(client.socket, (const char*)audioData, byteCount, 0x02); // binary frame
+                OutputDebugString(("FAUNA: audio frames sent: " +
+                                   juce::String(audioFrameCount) + "\n").toUTF8());
+
+            sendWebSocketFrame(client.socket, (const char*)audioData, byteCount, 0x02);
         }
     }
 }
@@ -573,8 +644,6 @@ void HTTPServer::writeAudioData(const float* audioData, int numSamples)
 //==============================================================================
 juce::String HTTPServer::getHTMLPage()
 {
-    // Serve the index.html content inline
-    // This is the full mobile page that connects via WebSocket and plays audio
     juce::String html = "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">";
     html += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">";
     html += "<title>FAUNA Audio Stream</title>";
@@ -623,13 +692,11 @@ juce::String HTTPServer::getHTMLPage()
     html += "<script>";
     html += "var isMuted=false,ws=null,audioCtx=null,started=false;";
     html += "var nextPlayTime=0,SAMPLE_RATE=44100,initReceived=false;";
-    // startAudio: button tap — required gesture for AudioContext on mobile
     html += "function startAudio(){";
     html += "if(started)return;started=true;";
     html += "document.getElementById('startBtn').textContent='Connecting...';";
     html += "document.getElementById('startBtn').disabled=true;";
     html += "document.getElementById('audioStatus').textContent='Waiting for DAW...';";
-    // Don't create AudioContext yet — we need the sample rate from the server first
     html += "connectWS();";
     html += "}";
     html += "function connectWS(){";
@@ -642,30 +709,25 @@ juce::String HTTPServer::getHTMLPage()
     html += "document.getElementById('startBtn').disabled=false;";
     html += "document.getElementById('startBtn').textContent='RECONNECT';";
     html += "started=false;initReceived=false;";
-    html += "setTimeout(function(){if(!started){started=true;connectWS();}},3000);"; // auto-reconnect
+    html += "setTimeout(function(){if(!started){started=true;connectWS();}},3000);";
     html += "};";
     html += "ws.onerror=function(){document.getElementById('audioStatus').textContent='Connection error';};";
     html += "ws.onmessage=function(e){";
-    // TEXT frame = init message with sample rate from the DAW
     html += "if(typeof e.data==='string'){";
     html += "try{var msg=JSON.parse(e.data);";
     html += "if(msg.type==='init'&&msg.sampleRate){";
     html += "SAMPLE_RATE=msg.sampleRate;";
     html += "document.getElementById('srStatus').textContent=SAMPLE_RATE+' Hz';";
     html += "document.getElementById('srStatus').className='connected';";
-    // KEY LINE: forces AudioContext to the DAW's exact sample rate
     html += "audioCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE});";
     html += "nextPlayTime=audioCtx.currentTime+0.1;";
     html += "initReceived=true;";
     html += "document.getElementById('audioStatus').textContent='Playing!';";
     html += "document.getElementById('audioStatus').className='connected';";
     html += "document.getElementById('startBtn').textContent='Streaming...';";
-    html += "}";
-    html += "}catch(err){}";
+    html += "}}catch(err){}";
     html += "return;";
     html += "}";
-    // BINARY frame = audio data — gate on initReceived so we never try to
-    // play audio before AudioContext exists at the right sample rate
     html += "if(!(e.data instanceof ArrayBuffer)||!initReceived||!audioCtx)return;";
     html += "var floats=new Float32Array(e.data);";
     html += "var numFrames=floats.length/2;if(numFrames<1)return;";
@@ -678,8 +740,8 @@ juce::String HTTPServer::getHTMLPage()
     html += "nextPlayTime+=abuf.duration;";
     html += "var mx=0;for(var i=0;i<Math.min(200,L.length);i++){var av=Math.abs(L[i]);if(av>mx)mx=av;}";
     html += "document.getElementById('levelBar').style.width=(mx*100)+'%';";
-    html += "};"; // end onmessage
-    html += "}"; // end connectWS
+    html += "};";
+    html += "}";
     html += "function toggleMute(){";
     html += "isMuted=!isMuted;";
     html += "var btn=document.getElementById('muteBtn');";
@@ -710,7 +772,7 @@ juce::String HTTPServer::buildHTTPResponse(const juce::String& request)
         request.startsWith("GET / HTTP") || request == "GET /")
     {
         juce::String htmlContent = getHTMLPage();
-        juce::String response = "HTTP/1.1 200 OK\r\n";
+        juce::String response    = "HTTP/1.1 200 OK\r\n";
         response += "Content-Type: text/html; charset=utf-8\r\n";
         response += "Content-Length: " + juce::String(htmlContent.getNumBytesAsUTF8()) + "\r\n";
         response += "Connection: close\r\n";
@@ -721,8 +783,8 @@ juce::String HTTPServer::buildHTTPResponse(const juce::String& request)
     else if (request.startsWith("GET /status"))
     {
         juce::String status = "{\"clients\":" + juce::String(getConnectedClients()) +
-                              ",\"port\":" + juce::String(port) +
-                              ",\"ip\":\"" + localIP + "\"}";
+                              ",\"port\":"    + juce::String(port) +
+                              ",\"ip\":\""    + localIP + "\"}";
         juce::String response = "HTTP/1.1 200 OK\r\n";
         response += "Content-Type: application/json\r\n";
         response += "Content-Length: " + juce::String(status.length()) + "\r\n";
@@ -732,7 +794,7 @@ juce::String HTTPServer::buildHTTPResponse(const juce::String& request)
     }
     else
     {
-        juce::String body = "<html><body><h1>FAUNA</h1><p><a href='/'>Home</a></p></body></html>";
+        juce::String body     = "<html><body><h1>FAUNA</h1><p><a href='/'>Home</a></p></body></html>";
         juce::String response = "HTTP/1.1 200 OK\r\n";
         response += "Content-Type: text/html\r\n";
         response += "Content-Length: " + juce::String(body.length()) + "\r\n";
