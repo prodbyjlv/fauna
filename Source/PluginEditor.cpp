@@ -4,7 +4,8 @@
 FAUNAAudioProcessorEditor::FAUNAAudioProcessorEditor (FAUNAAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
-    setSize (450, 420);
+    OutputDebugString("FAUNA: Editor constructor starting\n");
+    setSize (450, 440);
     
     titleFont = juce::FontOptions(64.0f, juce::Font::bold);
     urlFont = juce::FontOptions(16.0f, juce::Font::bold);
@@ -47,6 +48,7 @@ FAUNAAudioProcessorEditor::FAUNAAudioProcessorEditor (FAUNAAudioProcessor& p)
     devicesLabel.setJustificationType(juce::Justification::centred);
     
     startTimer(100);
+    OutputDebugString("FAUNA: Editor constructor finished, timer started\n");
 }
 
 FAUNAAudioProcessorEditor::~FAUNAAudioProcessorEditor()
@@ -56,6 +58,7 @@ FAUNAAudioProcessorEditor::~FAUNAAudioProcessorEditor()
 
 void FAUNAAudioProcessorEditor::paint (juce::Graphics& g)
 {
+    OutputDebugString("FAUNA: paint() called\n");
     g.fillAll(juce::Colour(0xFF0d0d0d));
     
     int centerX = getWidth() / 2;
@@ -114,17 +117,16 @@ void FAUNAAudioProcessorEditor::resized()
 {
     int w = getWidth();
     
-    urlLabel.setBounds(0, 320, w, 30);
+    statusLabel.setBounds(0, 310, w, 20);
+    devicesLabel.setBounds(0, 330, w, 20);
+    urlLabel.setBounds(0, 350, w, 30);
     
-    int bottomY = 360;
+    int bottomY = 380;
     int labelWidth = w / 3;
     
     sampleRateLabel.setBounds(0, bottomY, labelWidth, 20);
     bufferSizeLabel.setBounds(labelWidth, bottomY, labelWidth, 20);
     portLabel.setBounds(labelWidth * 2, bottomY, labelWidth, 20);
-    
-    statusLabel.setBounds(0, 100, w, 20);
-    devicesLabel.setBounds(0, 125, w, 20);
 }
 
 void FAUNAAudioProcessorEditor::timerCallback()
@@ -133,17 +135,20 @@ void FAUNAAudioProcessorEditor::timerCallback()
     
     if (audioProcessor.isShuttingDown)
     {
+        OutputDebugString("FAUNA: timerCallback - isShuttingDown is true, returning\n");
         return;
     }
     
     if (!audioProcessor.isServerRunning())
     {
         statusLabel.setText("Server: Starting...", juce::dontSendNotification);
+        OutputDebugString("FAUNA: timerCallback - server not running yet\n");
         return;
     }
     
     if (!ipDetected)
     {
+        OutputDebugString("FAUNA: Editor timer - detecting IP\n");
         audioProcessor.httpServer.detectLocalIP();
         ipDetected = true;
     }

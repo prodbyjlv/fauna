@@ -6,14 +6,14 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-class AudioClient
+struct AudioClient
 {
-public:
     SOCKET socket = INVALID_SOCKET;
     bool muted = false;
     juce::String ipAddress;
     bool isWebSocket = false;
-    int64_t lastPingTime = 0;
+    __int64 lastPingTime = 0;
+    bool sampleRateSent = false;
 };
 
 class HTTPServer
@@ -34,8 +34,8 @@ public:
     
     void setMuteState(int clientId, bool muted) {}
     void writeAudioData(const float* audioData, int numSamples);
-    
     void setLevel(float level) { currentLevel = level; }
+    void setSampleRate(double sr) { sampleRate = sr; }
 
 private:
     static DWORD WINAPI serverThreadFunc(LPVOID lpParam);
@@ -48,17 +48,19 @@ private:
     juce::String generateWebSocketKey(const char* key);
     void sendWebSocketFrame(SOCKET socket, const char* data, int length, int opcode);
     void broadcastAudio(const float* audioData, int numSamples);
+    void sendSampleRateMessage(AudioClient& client);
 
     int port = 8080;
     volatile bool running = false;
     float currentLevel = 0.0f;
     juce::String localIP;
+    double sampleRate = 44100.0;
+    int audioFrameCount = 0;
 
     SOCKET serverSocket = INVALID_SOCKET;
     HANDLE serverThreadHandle = NULL;
     juce::Array<AudioClient> audioClients;
     juce::CriticalSection clientsLock;
 
-    JUCE_LEAK_DETECTOR(HTTPServer)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(HTTPServer)
 };
-

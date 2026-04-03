@@ -265,11 +265,17 @@ SOCKET HTTPServer::createServerSocket(int port)
 
 void HTTPServer::handleClient(SOCKET clientSocket)
 {
+    // Set a short receive timeout so we don't block the server thread forever
+    DWORD timeout = 5000; // 5 seconds
+    setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
+
     char buffer[8192];
     int bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
 
     if (bytesReceived <= 0)
     {
+        DWORD err = WSAGetLastError();
+        OutputDebugString(("FAUNA: handleClient recv failed, bytes=" + juce::String(bytesReceived) + ", WSAError=" + juce::String(err) + "\n").toUTF8());
         closesocket(clientSocket);
         return;
     }
@@ -335,6 +341,7 @@ void HTTPServer::handleClient(SOCKET clientSocket)
         client.isWebSocket = true;
         client.muted = false;
         client.lastPingTime = 0;
+        client.sampleRateSent = false; // init not yet sent
 
         sockaddr_in addr;
         int addrLen = sizeof(addr);
@@ -471,15 +478,34 @@ void HTTPServer::sendWebSocketFrame(SOCKET socket, const char* data, int length,
     if (length > 0 && data != nullptr)
         memcpy(frame.get() + headerLen, data, length);
 
-    OutputDebugString(("FAUNA: sendWebSocketFrame - opcode: " + juce::String(opcode) + ", length: " + juce::String(length) + ", total: " + juce::String(totalLen) + "\n").toUTF8());
+    send(socket, frame.get(), totalLen, 0);
+}
 
-    int sent = send(socket, frame.get(), totalLen, 0);
-    if (sent == SOCKET_ERROR) {
-        int err = WSAGetLastError();
-        OutputDebugString(("FAUNA: send failed, error: " + juce::String(err) + "\n").toUTF8());
-    } else {
-        OutputDebugString(("FAUNA: send success, bytes sent: " + juce::String(sent) + "\n").toUTF8());
-    }
+//==============================================================================
+// SAMPLE RATE HANDSHAKE
+//
+// The problem this solves:
+//   Mobile browsers create AudioContext at the device's native sample rate
+//   (usually 48000 Hz on Android/iOS). If the DAW runs at 44100 Hz, every
+//   audio buffer plays at the wrong speed — audio is sharp and fast.
+//
+// The solution (two steps):
+//   SERVER: On a new client's first audio callback, send this JSON text frame
+//   BEFORE any binary audio data:
+//       {"type":"init","sampleRate":44100}
+//
+//   BROWSER: On receiving this message, create AudioContext({sampleRate:44100})
+//   to force the browser to match the DAW exactly. Then start processing audio.
+//
+// sampleRate is set from prepareToPlay() via setSampleRate() so it always
+// reflects the actual DAW project sample rate, even if the user changes it.
+//==============================================================================
+void HTTPServer::sendSampleRateMessage(AudioClient& client)
+{
+    int sr = (int)sampleRate;
+    juce::String msg = "{\"type\":\"init\",\"sampleRate\":" + juce::String(sr) + "}";
+    sendWebSocketFrame(client.socket, msg.toUTF8(), msg.length(), 0x01); // text frame
+    OutputDebugString(("FAUNA: Init sent to client, sampleRate=" + juce::String(sr) + " Hz\n").toUTF8());
 }
 
 //==============================================================================
@@ -487,21 +513,12 @@ void HTTPServer::sendWebSocketFrame(SOCKET socket, const char* data, int length,
 //==============================================================================
 void HTTPServer::broadcastAudio(const float* audioData, int numSamples)
 {
-    // audioData is interleaved stereo: [L0, R0, L1, R1, ...]
-    // numSamples is per-channel sample count
-    // Total floats = numSamples * 2
-
     int numFloats = numSamples * 2;
     int byteCount = numFloats * sizeof(float);
 
     juce::ScopedLock lock(clientsLock);
 
-    if (audioClients.size() == 0) {
-        OutputDebugString("FAUNA: broadcastAudio - no clients connected\n");
-        return;
-    }
-
-    OutputDebugString(("FAUNA: broadcastAudio - clients: " + juce::String(audioClients.size()) + ", samples: " + juce::String(numSamples) + "\n").toUTF8());
+    if (audioClients.size() == 0) return;
 
     for (int i = audioClients.size() - 1; i >= 0; i--)
     {
@@ -515,16 +532,27 @@ void HTTPServer::broadcastAudio(const float* audioData, int numSamples)
 
         if (!client.isWebSocket) continue;
 
+        // First time we see this client: send the init message with sample rate.
+        // Skip sending audio this callback — give the browser time to set up
+        // its AudioContext at the correct rate before audio starts flowing.
+        if (!client.sampleRateSent)
+        {
+            sendSampleRateMessage(client);
+            client.sampleRateSent = true;
+            continue; // audio starts next callback (~10ms later)
+        }
+
         // If muted, send silence instead of real audio
         if (client.muted)
         {
             juce::HeapBlock<float> silence(numFloats, true); // zero-initialised
-            OutputDebugString(("FAUNA: sending silence to client " + client.ipAddress + "\n").toUTF8());
             sendWebSocketFrame(client.socket, (const char*)silence.get(), byteCount, 0x02); // binary frame
         }
         else
         {
-            OutputDebugString(("FAUNA: sending audio to client " + client.ipAddress + ", bytes: " + juce::String(byteCount) + "\n").toUTF8());
+            audioFrameCount++;
+            if (audioFrameCount % 200 == 0)
+                OutputDebugString(("FAUNA: audio frames sent: " + juce::String(audioFrameCount) + "\n").toUTF8());
             sendWebSocketFrame(client.socket, (const char*)audioData, byteCount, 0x02); // binary frame
         }
     }
@@ -578,6 +606,7 @@ juce::String HTTPServer::getHTMLPage()
     html += "<p><strong>Server:</strong> <span id=\"serverStatus\">Checking...</span></p>";
     html += "<p><strong>Devices:</strong> <span id=\"deviceCount\">0</span></p>";
     html += "<p><strong>Audio:</strong> <span id=\"audioStatus\">Click Start to begin</span></p>";
+    html += "<p><strong>Sample Rate:</strong> <span id=\"srStatus\">-</span></p>";
     html += "</div>";
     html += "<button class=\"start-btn\" id=\"startBtn\" onclick=\"startAudio()\">START AUDIO</button>";
     html += "<div class=\"level-meter\"><div class=\"level-bar\" id=\"levelBar\"></div></div>";
@@ -585,58 +614,65 @@ juce::String HTTPServer::getHTMLPage()
     html += "<p class=\"connection-status\" id=\"status\">Ready</p>";
     html += "</div>";
     html += "<script>";
-    // Audio playback using Web Audio API with a queue-based approach
     html += "var isMuted=false,ws=null,audioCtx=null,started=false;";
-    html += "var audioQueue=[],isPlaying=false,nextPlayTime=0;";
-    html += "var SAMPLE_RATE=44100,CHANNELS=2,CHUNK_SIZE=4096;";
-    // startAudio: called on button press (required for AudioContext on mobile)
+    html += "var nextPlayTime=0,SAMPLE_RATE=44100,initReceived=false;";
+    // startAudio: button tap — required gesture for AudioContext on mobile
     html += "function startAudio(){";
-    html += "if(started)return; started=true;";
-    html += "var btn=document.getElementById('startBtn');";
-    html += "btn.textContent='Connecting...'; btn.disabled=true;";
-    html += "document.getElementById('audioStatus').textContent='Connecting...';";
-    // Create AudioContext - mobile browsers need user gesture first
-    html += "audioCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE});";
-    html += "SAMPLE_RATE=audioCtx.sampleRate;";
-    // Connect WebSocket
+    html += "if(started)return;started=true;";
+    html += "document.getElementById('startBtn').textContent='Connecting...';";
+    html += "document.getElementById('startBtn').disabled=true;";
+    html += "document.getElementById('audioStatus').textContent='Waiting for DAW...';";
+    // Don't create AudioContext yet — we need the sample rate from the server first
+    html += "connectWS();";
+    html += "}";
+    html += "function connectWS(){";
     html += "ws=new WebSocket('ws://'+location.host);";
     html += "ws.binaryType='arraybuffer';";
-    html += "ws.onopen=function(){";
-    html += "document.getElementById('audioStatus').textContent='Playing!';";
-    html += "document.getElementById('audioStatus').className='connected';";
-    html += "btn.textContent='Streaming...';";
-    html += "nextPlayTime=audioCtx.currentTime+0.1;"; // small initial buffer
-    html += "};";
+    html += "ws.onopen=function(){document.getElementById('status').textContent='Connected';};";
     html += "ws.onclose=function(e){";
     html += "document.getElementById('audioStatus').textContent='Disconnected ('+e.code+')';";
     html += "document.getElementById('audioStatus').style.color='#ff4444';";
-    html += "btn.disabled=false; btn.textContent='RECONNECT'; started=false;";
+    html += "document.getElementById('startBtn').disabled=false;";
+    html += "document.getElementById('startBtn').textContent='RECONNECT';";
+    html += "started=false;initReceived=false;";
+    html += "setTimeout(function(){if(!started){started=true;connectWS();}},3000);"; // auto-reconnect
     html += "};";
-    html += "ws.onerror=function(){document.getElementById('audioStatus').textContent='Error';};";
-    // onmessage: receive Float32 interleaved stereo, decode and schedule for playback
+    html += "ws.onerror=function(){document.getElementById('audioStatus').textContent='Connection error';};";
     html += "ws.onmessage=function(e){";
-    html += "if(!(e.data instanceof ArrayBuffer))return;";
+    // TEXT frame = init message with sample rate from the DAW
+    html += "if(typeof e.data==='string'){";
+    html += "try{var msg=JSON.parse(e.data);";
+    html += "if(msg.type==='init'&&msg.sampleRate){";
+    html += "SAMPLE_RATE=msg.sampleRate;";
+    html += "document.getElementById('srStatus').textContent=SAMPLE_RATE+' Hz';";
+    html += "document.getElementById('srStatus').className='connected';";
+    // KEY LINE: forces AudioContext to the DAW's exact sample rate
+    html += "audioCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE});";
+    html += "nextPlayTime=audioCtx.currentTime+0.1;";
+    html += "initReceived=true;";
+    html += "document.getElementById('audioStatus').textContent='Playing!';";
+    html += "document.getElementById('audioStatus').className='connected';";
+    html += "document.getElementById('startBtn').textContent='Streaming...';";
+    html += "}";
+    html += "}catch(err){}";
+    html += "return;";
+    html += "}";
+    // BINARY frame = audio data — gate on initReceived so we never try to
+    // play audio before AudioContext exists at the right sample rate
+    html += "if(!(e.data instanceof ArrayBuffer)||!initReceived||!audioCtx)return;";
     html += "var floats=new Float32Array(e.data);";
-    html += "var numFrames=floats.length/2;";
-    html += "if(numFrames<1)return;";
-    // Create an AudioBuffer and fill L/R channels
-    html += "var buf=audioCtx.createBuffer(2,numFrames,SAMPLE_RATE);";
-    html += "var L=buf.getChannelData(0),R=buf.getChannelData(1);";
+    html += "var numFrames=floats.length/2;if(numFrames<1)return;";
+    html += "var abuf=audioCtx.createBuffer(2,numFrames,SAMPLE_RATE);";
+    html += "var L=abuf.getChannelData(0),R=abuf.getChannelData(1);";
     html += "for(var i=0;i<numFrames;i++){L[i]=floats[i*2];R[i]=floats[i*2+1];}";
-    // Schedule playback - keep a small rolling buffer ahead of current time
-    html += "if(nextPlayTime<audioCtx.currentTime+0.05)";
-    html += "nextPlayTime=audioCtx.currentTime+0.05;"; // re-sync if we fall behind
+    html += "if(nextPlayTime<audioCtx.currentTime+0.04)nextPlayTime=audioCtx.currentTime+0.04;";
     html += "var src=audioCtx.createBufferSource();";
-    html += "src.buffer=buf;";
-    html += "src.connect(audioCtx.destination);";
-    html += "src.start(nextPlayTime);";
-    html += "nextPlayTime+=buf.duration;";
-    // Level meter
-    html += "var maxLevel=0;";
-    html += "for(var i=0;i<Math.min(200,L.length);i++){var a=Math.abs(L[i]);if(a>maxLevel)maxLevel=a;}";
-    html += "document.getElementById('levelBar').style.width=(maxLevel*100)+'%';";
-    html += "};";
-    html += "}"; // end startAudio
+    html += "src.buffer=abuf;src.connect(audioCtx.destination);src.start(nextPlayTime);";
+    html += "nextPlayTime+=abuf.duration;";
+    html += "var mx=0;for(var i=0;i<Math.min(200,L.length);i++){var av=Math.abs(L[i]);if(av>mx)mx=av;}";
+    html += "document.getElementById('levelBar').style.width=(mx*100)+'%';";
+    html += "};"; // end onmessage
+    html += "}"; // end connectWS
     html += "function toggleMute(){";
     html += "isMuted=!isMuted;";
     html += "var btn=document.getElementById('muteBtn');";

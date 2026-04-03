@@ -40,11 +40,19 @@ void FAUNAAudioProcessor::changeProgramName(int, const juce::String&) {}
 
 void FAUNAAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
+    // Reset shutdown flag so the server can start fresh
+    isShuttingDown = false;
+    
+    // Tell the server the DAW sample rate BEFORE it starts receiving audio.
+    // The server will forward this to each browser client as a JSON init message
+    // so the browser creates its AudioContext at the correct rate.
+    httpServer.setSampleRate(sampleRate);
     httpServer.start(8080);
 }
 
 void FAUNAAudioProcessor::releaseResources()
 {
+    isShuttingDown = true;
     httpServer.stop();
 }
 
@@ -64,7 +72,8 @@ void FAUNAAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
 {
     juce::ScopedNoDenormals noDenormals;
 
-    // Clear any output channels that don't have input data
+    if (isShuttingDown) return;
+
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
@@ -73,11 +82,11 @@ void FAUNAAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
     // Process audio for level metering
     audioStreamer.processBlock(buffer);
 
+    if (isShuttingDown) return;
+
     const int numSamples  = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();
 
-    // Interleave stereo audio into a flat float array [L0,R0, L1,R1, ...]
-    // This is exactly what the browser's Float32Array expects
     juce::HeapBlock<float> interleaved(numSamples * 2);
     float* out = interleaved.get();
 
@@ -85,19 +94,13 @@ void FAUNAAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
     {
         float left  = buffer.getSample(0, i);
         float right = (numChannels > 1) ? buffer.getSample(1, i) : left;
-
-        // Clamp to [-1, 1] to prevent WebSocket payload corruption
         left  = juce::jlimit(-1.0f, 1.0f, left);
         right = juce::jlimit(-1.0f, 1.0f, right);
-
         out[i * 2]     = left;
         out[i * 2 + 1] = right;
     }
 
-    // Send to all connected WebSocket clients
-    // numSamples is per-channel count; broadcastAudio expects per-channel count
     httpServer.writeAudioData(out, numSamples);
-    OutputDebugString(("FAUNA: processBlock sending " + juce::String(numSamples) + " samples\n").toUTF8());
 }
 
 bool FAUNAAudioProcessor::hasEditor() const { return true; }
