@@ -162,21 +162,8 @@ void HTTPServer::stop()
 {
     running = false;
 
-    if (serverSocket != INVALID_SOCKET) {
-        shutdown(serverSocket, SD_BOTH);
-        closesocket(serverSocket);
-        serverSocket = INVALID_SOCKET;
-    }
-
-    if (serverThreadHandle != NULL)
-    {
-        DWORD waitResult = WaitForSingleObject(serverThreadHandle, 2000);
-        if (waitResult == WAIT_TIMEOUT)
-            TerminateThread(serverThreadHandle, 0);
-        CloseHandle(serverThreadHandle);
-        serverThreadHandle = NULL;
-    }
-
+    // Close all client sockets FIRST — this unblocks any recv() calls
+    // in handleClient so the server thread can exit cleanly
     {
         juce::ScopedLock lock(clientsLock);
         for (auto& client : audioClients)
@@ -187,6 +174,28 @@ void HTTPServer::stop()
                 client.socket = INVALID_SOCKET;
             }
         }
+    }
+
+    // Close the server socket — this unblocks accept()
+    if (serverSocket != INVALID_SOCKET) {
+        shutdown(serverSocket, SD_BOTH);
+        closesocket(serverSocket);
+        serverSocket = INVALID_SOCKET;
+    }
+
+    // Now wait for the thread to exit — it should exit quickly since
+    // both accept() and recv() are unblocked by the socket closures above
+    if (serverThreadHandle != NULL)
+    {
+        DWORD waitResult = WaitForSingleObject(serverThreadHandle, 5000);
+        if (waitResult == WAIT_TIMEOUT)
+            TerminateThread(serverThreadHandle, 0);
+        CloseHandle(serverThreadHandle);
+        serverThreadHandle = NULL;
+    }
+
+    {
+        juce::ScopedLock lock(clientsLock);
         audioClients.clear();
     }
 
