@@ -61,3 +61,41 @@ In the future:
 2. **Copy build output exactly as-is**
 3. **Trust the build system (JUCE/VS)**
 4. If something seems wrong, ask before making changes
+
+---
+
+## iOS Audio Output Discovery
+
+**Date: April 3, 2026**
+
+### Discovery
+
+After implementing the iPhone unlock overlay, we discovered that:
+- Audio DOES play through Bluetooth headphones connected to iPhone
+- Audio does NOT play through iPhone built-in speakers
+- Other apps play audio through iPhone speakers fine
+- Disabling Bluetooth on iPhone did NOT fix the speaker issue
+
+### What This Means
+
+| Observation | Implication |
+|------------|-------------|
+| Audio plays through Bluetooth headphones | AudioContext is working correctly ✓ |
+| Audio doesn't play through iPhone speakers | iOS audio routing issue |
+| Other apps play through speakers fine | iPhone speakers work, just not web audio |
+
+### The Problem
+
+iOS Safari defaults to Bluetooth audio output when a Bluetooth device is connected or has been connected in the session. Web Audio API on iOS tends to route audio to Bluetooth devices rather than built-in speakers.
+
+### Status
+
+**The iPhone unlock code is working** - audio is being processed and plays through Bluetooth. The remaining issue is an iOS audio routing problem specific to Web Audio API, not our code.
+
+### Next Steps to Investigate
+
+1. Research iOS Audio Session configuration for Web Audio API
+2. Explore using `navigator.mediaDevices` or AudioOutput endpoint selection
+3. Test on Android Chrome to see if speakers work there
+4. Consider if this is acceptable behavior (audio to headphones is still functional)
+
