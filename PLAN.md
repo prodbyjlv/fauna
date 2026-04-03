@@ -21,12 +21,20 @@ This branch contains the v1.1 development work for FAUNA audio streaming plugin.
   - Uses Nayuki QR Code library (QrCode.cpp/hpp)
   - QR code displays in plugin UI with connection URL
   - Scan with phone camera → auto-opens connection page
+  - QR only regenerates when URL changes (performance optimization)
 - **Files modified:** `PluginEditor.cpp`, `PluginEditor.h`
 
 ### 3. Pre-Buffer for Audio Quality ✅
 - **Problem:** Android audio had crackling due to WiFi jitter
 - **Solution:** Skip first 2 audio callbacks to pre-buffer, start playback on 3rd callback
 - **Result:** Smooth audio on Android, no crackling
+
+### 4. Performance & Stability Improvements ✅
+- **Thread-safe client counting:** Using `std::atomic<int>` for connected client count
+- **Better socket management:** Extract socket handles before releasing lock, cleaner separation
+- **Level meter during pre-buffer:** Shows activity before audio starts playing
+- **Pre-buffer counter reset:** Properly resets on disconnect/reconnect
+- **Files modified:** `WebServer.cpp`, `WebServer.h`, `PluginEditor.cpp`
 
 ## Testing Checklist
 
@@ -37,6 +45,7 @@ This branch contains the v1.1 development work for FAUNA audio streaming plugin.
 - [x] QR Code: Mobile connects and streams audio after scan
 - [x] No crashes when deleting plugin from FL Studio
 - [x] Audio quality: Pre-buffer reduces crackling on Android
+- [x] Improvements: QR optimization, atomic client count, socket management tested
 
 ---
 
@@ -61,6 +70,7 @@ This branch contains the v1.1 development work for FAUNA audio streaming plugin.
 - Android (Chrome, Samsung Internet) - Audio plays correctly
 - Level meter proves audio data flows correctly
 - Sample rate handshake works
+- QR code scanning works
 
 **Attempts to Fix:**
 1. `audioCtx.resume()` - Did not fix iPhone audio
@@ -83,15 +93,11 @@ This branch contains the v1.1 development work for FAUNA audio streaming plugin.
 4. Research iOS WebKit audio restrictions
 5. Consider using Web Audio API worklet for better iOS compatibility
 
-**Resources:**
-- iOS Safari Web Audio limitations
-- AudioContext.state property monitoring
-- Check for iOS silent mode / Do Not Disturb
-
 ---
 
 ## Notes
 
-- Design/UI improvements deferred to future version
-- iPhone issue needs further investigation
+- All improvements successfully tested and working
 - Android audio is solid with current implementation
+- iPhone issue documented, needs further investigation
+- Design/UI improvements deferred to future version
