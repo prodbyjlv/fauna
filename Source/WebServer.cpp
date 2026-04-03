@@ -163,7 +163,7 @@ void HTTPServer::stop()
     running = false;
 
     // Close all client sockets FIRST — this unblocks any recv() calls
-    // in handleClient so the server thread can exit cleanly
+    // in handleClient or handleWebSocketClient so the server thread can exit cleanly
     {
         juce::ScopedLock lock(clientsLock);
         for (auto& client : audioClients)
@@ -183,11 +183,11 @@ void HTTPServer::stop()
         serverSocket = INVALID_SOCKET;
     }
 
-    // Now wait for the thread to exit — it should exit quickly since
+    // Wait for the thread to exit — it should exit quickly since
     // both accept() and recv() are unblocked by the socket closures above
     if (serverThreadHandle != NULL)
     {
-        DWORD waitResult = WaitForSingleObject(serverThreadHandle, 5000);
+        DWORD waitResult = WaitForSingleObject(serverThreadHandle, 10000);
         if (waitResult == WAIT_TIMEOUT)
             TerminateThread(serverThreadHandle, 0);
         CloseHandle(serverThreadHandle);

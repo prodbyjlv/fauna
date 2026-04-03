@@ -8,16 +8,10 @@
 #include "PluginEditor.h"
 
 FAUNAAudioProcessor::FAUNAAudioProcessor()
-#ifndef JucePlugin_PreferredChannelConfigurations
      : AudioProcessor (BusesProperties()
-                     #if ! JucePlugin_IsMidiEffect
-                      #if ! JucePlugin_IsSynth
-                       .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-                      #endif
-                       .withOutput ("Output",  juce::AudioChannelSet::stereo(), true)
-                     #endif
+                      .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
+                      .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
                        )
-#endif
 {
 }
 
@@ -56,7 +50,6 @@ void FAUNAAudioProcessor::releaseResources()
     httpServer.stop();
 }
 
-#ifndef JucePlugin_PreferredChannelConfigurations
 bool FAUNAAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
     if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
@@ -66,7 +59,6 @@ bool FAUNAAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) con
         return false;
     return true;
 }
-#endif
 
 void FAUNAAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
