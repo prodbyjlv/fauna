@@ -345,7 +345,6 @@ juce::String HTTPServer::getHTMLPage()
     html+="document.getElementById('srStatus').textContent=SAMPLE_RATE+' Hz';";
     html+="document.getElementById('srStatus').className='connected';";
     html+="audioCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE});";
-    html+="audioCtx.resume();";
     html+="nextPlayTime=audioCtx.currentTime+0.1;";
     html+="initReceived=true;";
     html+="document.getElementById('audioStatus').textContent='Playing!';";
