@@ -106,7 +106,6 @@ DWORD HTTPServer::serverThread()
         SOCKET cs=accept(serverSocket,(sockaddr*)&ca,&cl);
         if(cs!=INVALID_SOCKET) handleClient(cs);
 
-        // Copy socket handles out before releasing lock — never hold lock during recv()
         juce::Array<SOCKET> socketsToCheck;
         {
             juce::ScopedLock lock(clientsLock);
@@ -125,7 +124,6 @@ DWORD HTTPServer::serverThread()
 
             if(r>0)
             {
-                // Re-acquire lock only to find the client, then handle it
                 juce::ScopedLock lock(clientsLock);
                 for(int j=audioClients.size()-1;j>=0;--j)
                 {
@@ -152,10 +150,9 @@ DWORD HTTPServer::serverThread()
             }
         }
 
-        // Clean up any sockets marked invalid during handling
         {
             juce::ScopedLock lock(clientsLock);
-            for(int i=audioClients.size()-1;i>=0;--i)
+            for(int i=audioClients.size()-1;i>=0;i--)
                 if(audioClients.getReference(i).socket==INVALID_SOCKET)
                     audioClients.remove(i);
             connectedClientCount.store(audioClients.size());
@@ -384,6 +381,8 @@ juce::String HTTPServer::getHTMLPage()
 
     html+="function startAudio(){";
     html+="if(started)return;started=true;";
+    html+="audioCtx=new(window.AudioContext||window.webkitAudioContext)();";
+    html+="audioCtx.resume();";
     html+="document.getElementById('startBtn').textContent='Connecting...';";
     html+="document.getElementById('startBtn').disabled=true;";
     html+="document.getElementById('audioStatus').textContent='Waiting for DAW...';";
@@ -400,7 +399,7 @@ juce::String HTTPServer::getHTMLPage()
     html+="document.getElementById('startBtn').disabled=false;";
     html+="document.getElementById('startBtn').textContent='RECONNECT';";
     html+="started=false;initReceived=false;audioBufferCount=0;";
-    html+="setTimeout(function(){if(!started){started=true;connectWS();}},3000);";
+    html+="setTimeout(function(){if(!started){started=true;if(audioCtx)audioCtx.resume();connectWS();}},3000);";
     html+="};";
     html+="ws.onerror=function(){document.getElementById('audioStatus').textContent='Connection error';};";
 
@@ -412,12 +411,17 @@ juce::String HTTPServer::getHTMLPage()
     html+="SAMPLE_RATE=msg.sampleRate;";
     html+="document.getElementById('srStatus').textContent=SAMPLE_RATE+' Hz';";
     html+="document.getElementById('srStatus').className='connected';";
+    html+="var createRealContext=function(){";
     html+="audioCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE});";
+    html+="audioCtx.resume();";
     html+="nextPlayTime=audioCtx.currentTime+0.1;";
     html+="initReceived=true;";
     html+="document.getElementById('audioStatus').textContent='Playing!';";
     html+="document.getElementById('audioStatus').className='connected';";
     html+="document.getElementById('startBtn').textContent='Streaming...';";
+    html+="};";
+    html+="if(audioCtx&&audioCtx.state!=='closed'){audioCtx.close().then(createRealContext);}";
+    html+="else{createRealContext();}";
     html+="}";
     html+="}catch(err){}";
     html+="return;";
@@ -433,6 +437,7 @@ juce::String HTTPServer::getHTMLPage()
     html+="var mx=0;for(var i=0;i<Math.min(200,L.length);i++){var av=Math.abs(L[i]);if(av>mx)mx=av;}";
     html+="document.getElementById('levelBar').style.width=(mx*100)+'%';";
     html+="if(audioBufferCount<3)return;";
+    html+="if(audioCtx.state==='suspended')audioCtx.resume();";
     html+="if(nextPlayTime<audioCtx.currentTime+0.04)nextPlayTime=audioCtx.currentTime+0.04;";
     html+="var src=audioCtx.createBufferSource();";
     html+="src.buffer=abuf;src.connect(audioCtx.destination);src.start(nextPlayTime);";
