@@ -395,14 +395,11 @@ juce::String HTTPServer::getHTMLPage()
     html+=  "if(resamplerPhase<0)resamplerPhase=0;";
     html+="}";
 
-    // Unlock iOS audio
+    // Unlock iOS audio - valid 44-byte WAV forces Media session (ignores mute switch)
     html+="function unlockIOSAudio(ctx){";
-    html+=  "var b=ctx.createBuffer(1,1,22050);";
-    html+=  "var s=ctx.createBufferSource();";
-    html+=  "s.buffer=b;s.connect(ctx.destination);s.start(0);";
     html+=  "var a=document.getElementById('iosAudio');";
-    html+=  "a.src='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEA';";
-    html+=  "a.volume=0.001;a.play().catch(function(){});";
+    html+=  "a.src='data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';";
+    html+=  "a.loop=true;a.volume=0.001;a.play().catch(function(e){console.log('Unlock failed',e);});";
     html+="}";
 
     // Start audio
@@ -418,9 +415,9 @@ juce::String HTTPServer::getHTMLPage()
     html+=    "document.getElementById('startBtn').textContent='START AUDIO';return;}";
     html+=  "deviceSampleRate=audioCtx.sampleRate;";
     html+=  "document.getElementById('srStatus').textContent='Device: '+deviceSampleRate+' Hz';";
-    html+=  "audioCtx.resume().then(function(){unlockIOSAudio(audioCtx);})";
-    html+=             ".catch(function(){unlockIOSAudio(audioCtx);});";
-    html+=  "scriptNode=audioCtx.createScriptProcessor(4096,0,2);";
+    html+=  "if(audioCtx.state==='suspended'){audioCtx.resume().then(function(){unlockIOSAudio(audioCtx);})}";
+    html+=  "else{unlockIOSAudio(audioCtx);}";
+    html+=  "scriptNode=audioCtx.createScriptProcessor(4096,1,2);";
     html+=  "scriptNode.onaudioprocess=function(e){";
     html+=    "var L=e.outputBuffer.getChannelData(0);";
     html+=    "var R=e.outputBuffer.getChannelData(1);";
