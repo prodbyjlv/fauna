@@ -408,6 +408,7 @@ juce::String HTTPServer::getHTMLPage()
     html+=  "started=true;";
     html+=  "document.getElementById('startBtn').disabled=true;";
     html+=  "document.getElementById('startBtn').textContent='Connecting...';";
+    html+=  "if(navigator.audioSession){navigator.audioSession.type='playback';}";
     html+=  "document.getElementById('audioStatus').textContent='Starting...';";
     html+=  "try{audioCtx=new(window.AudioContext||window.webkitAudioContext)();}";
     html+=  "catch(e){document.getElementById('audioStatus').textContent='AudioContext failed: '+e.message;";

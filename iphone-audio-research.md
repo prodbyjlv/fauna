@@ -478,6 +478,47 @@ function startAudio(){
 
 ---
 
+## SUCCESS: Audio Session API - April 4, 2026
+
+### The Fix That Worked!
+
+On April 4, 2026, the Audio Session API solution was implemented and tested on a real iPhone. **It worked perfectly!**
+
+### What Was Added
+
+In `startAudio()` function, before AudioContext creation:
+
+```javascript
+if(navigator.audioSession){
+    navigator.audioSession.type = 'playback';
+}
+```
+
+### Results
+
+| Test | Result |
+|------|--------|
+| Audio through iPhone speakers | ✅ **WORKS** |
+| Audio with mute switch ON | ✅ **WORKS** |
+| Audio with mute switch OFF | ✅ **WORKS** |
+| Level meter responds | ✅ **WORKS** |
+| WebSocket connection | ✅ **WORKS** |
+
+### Why It Worked
+
+The Audio Session API directly addresses the root cause:
+- iOS web apps default to "ambient" audio session (respects mute switch, routes to earpiece)
+- Setting `type = 'playback'` tells iOS this is a media app
+- iOS then routes audio to speakers and ignores the mute switch
+
+### Key Takeaways
+
+1. **One line of code solved everything** - No need for WAV tricks, dummy oscillators, etc.
+2. **Directly addresses root cause** - Previous fixes were workarounds, this fixes the actual issue
+3. **Works on iOS 17+** - Audio Session API is supported in modern iOS
+
+---
+
 ## Summary
 
 | Attempt | Solution | Complexity | Status |
@@ -485,12 +526,12 @@ function startAudio(){
 | 1 | ScriptProcessor alone | Easy | ❌ Failed |
 | 2 | Valid WAV + 1 input | Easy | ❌ Failed |
 | 3 | Prime the Pump | Easy | ❌ Failed |
-| **4** | **Audio Session API** | **Easy** | **NOT YET TESTED** |
-| 5 | Dual Unlock | Medium | Not yet tried |
-| 6 | ios-audio-routing | High | Not yet tried |
+| **4** | **Audio Session API** | **Easy** | **✅ SUCCESS!** |
+
+**iPhone audio streaming is now fully functional! 🎉**
 
 ---
 
 **Document created:** April 4, 2026  
-**Last updated:** April 4, 2026  
-**Version:** 1.0
+**Last updated:** April 4, 2026 (Audio Session API fix confirmed working!)  
+**Version:** 1.1

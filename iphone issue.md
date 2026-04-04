@@ -192,4 +192,80 @@ All attempts so far:
 
 **Audio works through Bluetooth on iPhone, but NOT through built-in speakers.**
 
-This remains an unresolved iOS Web Audio API limitation.
+---
+
+## THE SOLUTION: Audio Session API - April 4, 2026
+
+### The Fix That Worked!
+
+After all previous attempts failed, additional research revealed the **root cause** of the iPhone audio issue:
+
+### Root Cause
+
+iOS WebAudio by default uses an **"ambient"** audio session type, which:
+- Respects the physical mute switch
+- Treats audio as background/notification sound
+- Routes audio to the earpiece instead of speakers
+
+Native apps like Spotify, YouTube use **"playback"** session type, which ignores the mute switch and routes to speakers.
+
+### The Solution
+
+**One line of code:**
+
+```javascript
+navigator.audioSession.type = 'playback';
+```
+
+This tells iOS to treat the web app as a media app, not a notification sound.
+
+### Code Change
+
+Added in the `startAudio()` function, before AudioContext creation:
+
+```javascript
+function startAudio(){
+    if(started)return;
+    started=true;
+    
+    // ADD THIS LINE FIRST
+    if(navigator.audioSession){
+        navigator.audioSession.type = 'playback';
+    }
+    
+    // ... rest of function
+}
+```
+
+### Why This Worked
+
+1. **Directly addresses the root cause** - The audio session type was the fundamental issue
+2. **Single line** - Simple, clean solution
+3. **iOS 17+ support** - The Audio Session API is supported in iOS 17+ Safari
+4. **No workaround needed** - Works without the WAV trick, dummy oscillator, etc.
+
+### Sources
+
+- W3C Audio Session API Specification: https://w3c.github.io/audio-session/
+- MDN Documentation: https://developer.mozilla.org/en-US/docs/Web/API/Audio_Session_API
+- Stack Overflow: https://stackoverflow.com/a/79789727
+
+---
+
+## Final Result
+
+| Attempt | Solution | Result |
+|---------|----------|--------|
+| 1 | Original ScriptProcessor approach | ❌ Failed |
+| 2 | Valid 44-byte WAV + 1 input channel | ❌ Failed |
+| 3 | "Prime the Pump" - dummy oscillator | ❌ Failed |
+| **4** | **Audio Session API** | **✅ SUCCESS!** |
+
+### What Now Works:
+- ✅ Audio plays through iPhone speakers
+- ✅ Audio plays regardless of mute switch position
+- ✅ Audio streams correctly
+- ✅ Level meter responds
+- ✅ Works on iOS 17+ Safari
+
+**iPhone audio streaming is now fully functional! 🎉**
