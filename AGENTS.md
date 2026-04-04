@@ -13,6 +13,11 @@
 - Mute/unmute control via mobile webpage
 - Level meter visualization on mobile
 - Support for up to 2 simultaneous devices
+- iPhone and Android support
+- Sample rate resampling (44100Hz → 48000Hz)
+- Ring buffer for smooth audio playback
+- Prebuffering to prevent crackling
+- QR code display for easy URL access
 
 ---
 
@@ -26,6 +31,18 @@
 ---
 
 ## Version History
+
+### v1.1.5 - iPhone + Android Support (April 4, 2026)
+
+**Status:** ✅ WORKING
+
+**Major improvements:**
+- Fixed iPhone audio routing (Audio Session API: `navigator.audioSession.type = 'playback'`)
+- Android audio pitch correction (sample rate resampling)
+- Ring buffer for smooth audio playback (192000 floats = 2 seconds)
+- Prebuffering to prevent crackling (4096 frames before playback)
+- ScriptProcessorNode for real-time buffer filling
+- Valid WAV data handling for iOS
 
 ### v1.0.0 - Initial Release (April 2, 2026)
 
@@ -49,7 +66,10 @@ First functional version with audio streaming capability.
 | Audio Streaming | ✅ |
 | Mute Control | ✅ |
 | Level Meter | ✅ |
-| QR Code | ❌ (not implemented) |
+| QR Code | ✅ |
+| Sample Rate Resampling | ✅ |
+| Ring Buffer | ✅ |
+| Prebuffering | ✅ |
 
 ---
 
@@ -63,6 +83,7 @@ FAUNA/
 │   +-- PluginEditor.cpp/h
 │   +-- AudioStreamer.cpp/h
 │   +-- WebServer.cpp/h
+│   +-- QrCode.cpp/h
 +-- web/
 │   +-- index.html
 +-- AGENTS.md
@@ -163,6 +184,45 @@ Browser showed "CLOSE code:1006"
 
 ---
 
+### April 3-4, 2026 - iPhone + Android Support
+
+**Problems:**
+1. Android audio played at wrong pitch/speed (8.8% faster)
+2. iPhone audio didn't play through speakers (only Bluetooth)
+3. Audio had crackling/popping on mobile devices
+
+**Root Causes Identified:**
+1. Sample rate mismatch: FL Studio 44100Hz vs Android 48000Hz
+2. iOS WebAudio defaults to "ambient" audio session (routes to earpiece)
+3. No buffering mechanism for smooth playback
+
+**Solutions Applied:**
+
+1. **Sample Rate Resampling** - Linear interpolation resampler:
+   - Converts FL Studio 44100Hz to device 48000Hz
+   - Audio plays at correct pitch/speed on Android
+
+2. **iOS Audio Session** - Added `navigator.audioSession.type = 'playback'`:
+   - Tells iOS to treat web app as media app
+   - Audio routes to speakers instead of earpiece
+
+3. **Ring Buffer** - 192000 floats (2 seconds):
+   - Smooths out timing variations
+   - Prevents underrun/overrun
+
+4. **Prebuffering** - 4096 frames before playback starts:
+   - Ensures buffer is full before audio begins
+   - Eliminates crackling at start
+
+**Testing:**
+- ✅ Android: Audio plays at correct pitch
+- ✅ iPhone: Audio plays through speakers
+- ✅ Android: No crackling/popping
+- ✅ iPhone: No crackling/popping
+- ✅ Bluetooth headphones work on both platforms
+
+---
+
 ## Files Modified
 
 ### Source/WebServer.cpp
@@ -172,26 +232,24 @@ Browser showed "CLOSE code:1006"
 - Added full embedded HTML page with audio streaming UI
 - Non-blocking sockets for audio streaming
 - Client limit (max 2)
+- Sample rate resampling for Android compatibility
 
 ### Source/PluginProcessor.cpp
 - Added audio interleaving for WebSocket transmission
 - Added value clamping to prevent corruption
 - Added call to httpServer.writeAudioData()
 
+### Source/QrCode.cpp/h
+- QR code generation for easy URL access
+- Displayed in plugin UI
+
 ### web/index.html
 - Full mobile control page with WebSocket audio
-- AudioContext playback with buffer scheduling
+- ScriptProcessorNode for real-time buffer filling
+- Ring buffer (192000 floats) for smooth playback
 - Level meter visualization
 - Mute/unmute toggle
-
----
-
-## Known Issues / Future Improvements
-
-1. **QR Code** - Not implemented yet - needed for easy distribution
-2. **Buffer underrun handling** - Could be improved for smoother playback
-3. **Latency adjustment** - Could add user-adjustable latency setting
-4. **Multiple device sync** - Currently each device plays independently
+- iOS Audio Session API: `navigator.audioSession.type = 'playback'`
 
 ---
 
@@ -204,4 +262,4 @@ Browser showed "CLOSE code:1006"
 
 ---
 
-*Last Updated: April 2, 2026*
+*Last Updated: April 4, 2026*
