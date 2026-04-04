@@ -1,0 +1,89 @@
+/*
+  ==============================================================================
+    PluginProcessor.cpp - FAUNA
+  ==============================================================================
+*/
+
+#include "PluginProcessor.h"
+#include "PluginEditor.h"
+
+FAUNAAudioProcessor::FAUNAAudioProcessor()
+#ifndef JucePlugin_PreferredChannelConfigurations
+     : AudioProcessor (BusesProperties()
+                     #if ! JucePlugin_IsMidiEffect
+                      #if ! JucePlugin_IsSynth
+                       .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
+                      #endif
+                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
+                     #endif
+                       )
+#endif
+{
+    httpServer.start(8080);
+}
+
+FAUNAAudioProcessor::~FAUNAAudioProcessor() { httpServer.stop(); }
+
+const juce::String FAUNAAudioProcessor::getName() const { return JucePlugin_Name; }
+bool FAUNAAudioProcessor::acceptsMidi() const { return false; }
+bool FAUNAAudioProcessor::producesMidi() const { return false; }
+bool FAUNAAudioProcessor::isMidiEffect() const { return false; }
+double FAUNAAudioProcessor::getTailLengthSeconds() const { return 0.0; }
+int FAUNAAudioProcessor::getNumPrograms() { return 1; }
+int FAUNAAudioProcessor::getCurrentProgram() { return 0; }
+void FAUNAAudioProcessor::setCurrentProgram(int) {}
+const juce::String FAUNAAudioProcessor::getProgramName(int) { return {}; }
+void FAUNAAudioProcessor::changeProgramName(int, const juce::String&) {}
+
+void FAUNAAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
+{
+    httpServer.setSampleRate(sampleRate);
+}
+
+void FAUNAAudioProcessor::releaseResources()
+{
+}
+
+#ifndef JucePlugin_PreferredChannelConfigurations
+bool FAUNAAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
+{
+    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
+     && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+        return false;
+    if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
+        return false;
+    return true;
+}
+#endif
+
+void FAUNAAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+{
+    juce::ScopedNoDenormals noDenormals;
+
+    auto totalNumInputChannels  = getTotalNumInputChannels();
+    auto totalNumOutputChannels = getTotalNumOutputChannels();
+    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
+        buffer.clear(i, 0, buffer.getNumSamples());
+
+    const int numSamples  = buffer.getNumSamples();
+    const int numChannels = buffer.getNumChannels();
+
+    juce::HeapBlock<float> interleaved(numSamples * 2);
+    float* out = interleaved.get();
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        float left  = buffer.getSample(0, i);
+        float right = (numChannels > 1) ? buffer.getSample(1, i) : left;
+        out[i * 2]     = juce::jlimit(-1.0f, 1.0f, left);
+        out[i * 2 + 1] = juce::jlimit(-1.0f, 1.0f, right);
+    }
+
+    httpServer.writeAudioData(out, numSamples);
+}
+
+bool FAUNAAudioProcessor::hasEditor() const { return true; }
+juce::AudioProcessorEditor* FAUNAAudioProcessor::createEditor() { return new FAUNAAudioProcessorEditor(*this); }
+void FAUNAAudioProcessor::getStateInformation(juce::MemoryBlock&) {}
+void FAUNAAudioProcessor::setStateInformation(const void*, int) {}
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new FAUNAAudioProcessor(); }
