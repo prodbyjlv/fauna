@@ -18,7 +18,9 @@ FAUNAAudioProcessor::FAUNAAudioProcessor()
                      #endif
                        )
 #endif
-{}
+{
+    httpServer.start(8080);
+}
 
 FAUNAAudioProcessor::~FAUNAAudioProcessor() { httpServer.stop(); }
 
@@ -36,10 +38,11 @@ void FAUNAAudioProcessor::changeProgramName(int, const juce::String&) {}
 void FAUNAAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     httpServer.setSampleRate(sampleRate);
-    httpServer.start(8080);
 }
 
-void FAUNAAudioProcessor::releaseResources() { httpServer.stop(); }
+void FAUNAAudioProcessor::releaseResources()
+{
+}
 
 #ifndef JucePlugin_PreferredChannelConfigurations
 bool FAUNAAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const

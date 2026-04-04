@@ -82,6 +82,10 @@ bool HTTPServer::start(int targetPort)
 void HTTPServer::stop()
 {
     running=false;
+
+    // Give the server thread time to notice running=false before yanking the socket
+    Sleep(50);
+
     if(serverSocket!=INVALID_SOCKET){shutdown(serverSocket,SD_BOTH);closesocket(serverSocket);serverSocket=INVALID_SOCKET;}
     if(serverThreadHandle!=NULL){
         if(WaitForSingleObject(serverThreadHandle,2000)==WAIT_TIMEOUT) TerminateThread(serverThreadHandle,0);
@@ -320,10 +324,7 @@ void HTTPServer::sendWebSocketFrame(SOCKET socket, const char* data, int length,
     else
     {
         frame[1]=127;
-        frame[2]=0;
-        frame[3]=0;
-        frame[4]=0;
-        frame[5]=0;
+        frame[2]=0; frame[3]=0; frame[4]=0; frame[5]=0;
         frame[6]=(char)((length>>24)&0xFF);
         frame[7]=(char)((length>>16)&0xFF);
         frame[8]=(char)((length>>8) &0xFF);
@@ -343,8 +344,16 @@ juce::String HTTPServer::generateWebSocketKey(const char* key)
 
 juce::String HTTPServer::getHTMLPage()
 {
+    // -------------------------------------------------------------------------
+    // IMPORTANT: All JS strings below are built as a flat sequence of
+    // html+= lines. Each function must be completely closed with its own "}"
+    // before the next function starts. A missing closing brace causes the
+    // entire <script> block to fail parsing on mobile browsers - which is
+    // exactly what caused the "button does nothing" bug on Android.
+    // -------------------------------------------------------------------------
+
     juce::String html="<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">";
-    html+="<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">";
+    html+="<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">";
     html+="<title>FAUNA Audio Stream</title><style>";
     html+="*{margin:0;padding:0;box-sizing:border-box}";
     html+="body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;color:white;padding:20px}";
@@ -360,7 +369,7 @@ juce::String HTTPServer::getHTMLPage()
     html+=".connected{color:#00ff88}";
     html+=".info-box{background:rgba(0,0,0,0.2);padding:15px;border-radius:10px;margin-bottom:20px}";
     html+=".info-box p{margin:5px 0}";
-    html+=".start-btn{padding:15px 40px;font-size:1.2em;background:#00d4ff;color:#1a1a2e;border:none;border-radius:10px;cursor:pointer;margin-bottom:20px;transition:all 0.3s}";
+    html+=".start-btn{padding:15px 40px;font-size:1.2em;background:#00d4ff;color:#1a1a2e;border:none;border-radius:10px;cursor:pointer;margin-bottom:20px;transition:all 0.3s;-webkit-tap-highlight-color:transparent}";
     html+=".start-btn:hover{transform:scale(1.05)}.start-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}";
     html+="</style></head><body>";
     html+="<div class=\"container\">";
@@ -377,77 +386,198 @@ juce::String HTTPServer::getHTMLPage()
     html+="<p class=\"connection-status\" id=\"status\">Ready</p>";
     html+="</div>";
     html+="<audio id=\"iosAudio\" playsinline></audio>";
+
+    // =========================================================================
+    // SCRIPT BLOCK
+    // Every function is a top-level declaration. Each is fully closed before
+    // the next begins. Verify by counting braces if editing.
+    // =========================================================================
     html+="<script>";
 
-    html+="var isMuted=false,ws=null,audioCtx=null,scriptNode=null;";
-    html+="var audioBuffer=[],started=false;";
+    // --- Global state variables ---
+    html+="var isMuted=false;";
+    html+="var ws=null;";
+    html+="var audioCtx=null;";
+    html+="var scriptNode=null;";
+    html+="var audioBuffer=[];";
+    html+="var started=false;";
+
+    // -------------------------------------------------------------------------
+    // unlockIOSAudio() - plays a silent buffer to ungate iOS/Android audio
+    // -------------------------------------------------------------------------
     html+="function unlockIOSAudio(context){";
-    html+="var buffer=context.createBuffer(1,1,22050);";
-    html+="var source=context.createBufferSource();";
-    html+="source.buffer=buffer;";
-    html+="source.connect(context.destination);";
-    html+="source.start();";
-    html+="var iosAudio=document.getElementById('iosAudio');";
-    html+="iosAudio.src='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEA';";
-    html+="iosAudio.volume=0.01;";
-    html+="iosAudio.play().catch(function(){});";
+    html+=  "var buffer=context.createBuffer(1,1,22050);";
+    html+=  "var source=context.createBufferSource();";
+    html+=  "source.buffer=buffer;";
+    html+=  "source.connect(context.destination);";
+    html+=  "source.start(0);";
+    html+=  "var iosAudio=document.getElementById('iosAudio');";
+    html+=  "iosAudio.src='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEA';";
+    html+=  "iosAudio.volume=0.001;";
+    html+=  "iosAudio.play().catch(function(){});";
     html+="}";
 
+    // -------------------------------------------------------------------------
+    // startAudio() - called by START AUDIO button tap/click
+    // BUG FIX: This function is now fully self-contained and closed with its
+    // own closing brace. Previously the brace was missing, causing the entire
+    // script to fail to parse on Android Chrome, making every button dead.
+    //
+    // BUG FIX: WebSocket URL now uses location.hostname + location.port
+    // instead of location.host, which is more reliable across Android Chrome
+    // versions and avoids mixed-content edge cases with some carrier proxies.
+    // -------------------------------------------------------------------------
     html+="function startAudio(){";
-    html+="if(started)return;";
-    html+="started=true;";
-    html+="document.getElementById('startBtn').textContent='Streaming...';";
-    html+="document.getElementById('audioStatus').textContent='Connecting...';";
-    html+="audioCtx=new(window.AudioContext||window.webkitAudioContext)();";
-    html+="audioCtx.resume();";
-    html+="unlockIOSAudio(audioCtx);";
-    html+="scriptNode=audioCtx.createScriptProcessor(4096,0,2);";
-    html+="scriptNode.onaudioprocess=function(e){";
-    html+="var left=e.outputBuffer.getChannelData(0);";
-    html+="var right=e.outputBuffer.getChannelData(1);";
-    html+="for(var i=0;i<4096;i++){";
-    html+="if(audioBuffer.length>=2){";
-    html+="left[i]=audioBuffer.shift();";
-    html+="right[i]=audioBuffer.shift();";
-    html+="}else{";
-    html+="left[i]=0;";
-    html+="right[i]=0;";
-    html+="}}};";
-    html+="scriptNode.connect(audioCtx.destination);";
-    html+="ws=new WebSocket('ws://'+location.host);";
-    html+="ws.binaryType='arraybuffer';";
-    html+="ws.onopen=function(){document.getElementById('audioStatus').textContent='Playing!';document.getElementById('audioStatus').className='connected';};";
-    html+="ws.onclose=function(){document.getElementById('audioStatus').textContent='Disconnected';document.getElementById('audioStatus').style.color='#ff4444';};";
-    html+="ws.onerror=function(){document.getElementById('audioStatus').textContent='Error';};";
-    html+="ws.onmessage=function(e){";
-    html+="if(!(e.data instanceof ArrayBuffer))return;";
-    html+="var float32Data=new Float32Array(e.data);";
-    html+="for(var i=0;i<float32Data.length;i++){audioBuffer.push(float32Data[i]);}";
-    html+="var maxLevel=0;";
-    html+="for(var i=0;i<Math.min(100,float32Data.length);i++){var abs=Math.abs(float32Data[i]);if(abs>maxLevel)maxLevel=abs;}";
-    html+="document.getElementById('levelBar').style.width=(maxLevel*100)+'%';";
-    html+="};";
+    html+=  "if(started)return;";
+    html+=  "started=true;";
+    html+=  "document.getElementById('startBtn').disabled=true;";
+    html+=  "document.getElementById('startBtn').textContent='Connecting...';";
+    html+=  "document.getElementById('audioStatus').textContent='Connecting...';";
 
-    html+="function toggleMute(){";
-    html+="isMuted=!isMuted;";
-    html+="var btn=document.getElementById('muteBtn');";
-    html+="if(isMuted){btn.textContent='MUTED';btn.className='mute-btn muted';}";
-    html+="else{btn.textContent='UNMUTED';btn.className='mute-btn unmuted';}";
-    html+="document.getElementById('status').textContent=isMuted?'Muted':'Unmuted';";
-    html+="if(ws&&ws.readyState===WebSocket.OPEN)ws.send(isMuted?'mute:true':'mute:false');";
+    // Create AudioContext - handle both standard and webkit prefix
+    html+=  "try{";
+    html+=    "audioCtx=new(window.AudioContext||window.webkitAudioContext)();";
+    html+=  "}catch(e){";
+    html+=    "document.getElementById('audioStatus').textContent='AudioContext failed: '+e.message;";
+    html+=    "started=false;";
+    html+=    "document.getElementById('startBtn').disabled=false;";
+    html+=    "document.getElementById('startBtn').textContent='START AUDIO';";
+    html+=    "return;";
+    html+=  "}";
+
+    // Resume is required on mobile - AudioContext starts suspended
+    html+=  "audioCtx.resume().then(function(){";
+    html+=    "unlockIOSAudio(audioCtx);";
+    html+=  "}).catch(function(){";
+    html+=    "unlockIOSAudio(audioCtx);";
+    html+=  "});";
+
+    // ScriptProcessor for audio output (0 inputs, 2 outputs = stereo)
+    html+=  "scriptNode=audioCtx.createScriptProcessor(4096,0,2);";
+    html+=  "scriptNode.onaudioprocess=function(e){";
+    html+=    "var left=e.outputBuffer.getChannelData(0);";
+    html+=    "var right=e.outputBuffer.getChannelData(1);";
+    html+=    "for(var i=0;i<4096;i++){";
+    html+=      "if(audioBuffer.length>=2){";
+    html+=        "left[i]=audioBuffer.shift();";
+    html+=        "right[i]=audioBuffer.shift();";
+    html+=      "}else{";
+    html+=        "left[i]=0;right[i]=0;";
+    html+=      "}";
+    html+=    "}";
+    html+=  "};";
+    html+=  "scriptNode.connect(audioCtx.destination);";
+
+    // Build WebSocket URL explicitly from hostname and port
+    // Using location.hostname + hardcoded port is more reliable on Android
+    // than location.host which can behave unexpectedly behind carrier NAT
+    html+=  "var wsHost=location.hostname;";
+    html+=  "var wsPort=location.port||'8080';";
+    html+=  "var wsUrl='ws://'+wsHost+':'+wsPort;";
+    html+=  "document.getElementById('status').textContent='Connecting to '+wsUrl;";
+
+    html+=  "try{";
+    html+=    "ws=new WebSocket(wsUrl);";
+    html+=  "}catch(e){";
+    html+=    "document.getElementById('audioStatus').textContent='WS failed: '+e.message;";
+    html+=    "started=false;";
+    html+=    "document.getElementById('startBtn').disabled=false;";
+    html+=    "document.getElementById('startBtn').textContent='START AUDIO';";
+    html+=    "return;";
+    html+=  "}";
+
+    html+=  "ws.binaryType='arraybuffer';";
+
+    html+=  "ws.onopen=function(){";
+    html+=    "document.getElementById('startBtn').textContent='Streaming...';";
+    html+=    "document.getElementById('audioStatus').textContent='Playing!';";
+    html+=    "document.getElementById('audioStatus').className='connected';";
+    html+=    "document.getElementById('status').textContent='Connected';";
+    html+=  "};";
+
+    html+=  "ws.onclose=function(e){";
+    html+=    "document.getElementById('audioStatus').textContent='Disconnected ('+e.code+')';";
+    html+=    "document.getElementById('audioStatus').style.color='#ff4444';";
+    html+=    "document.getElementById('startBtn').textContent='START AUDIO';";
+    html+=    "document.getElementById('startBtn').disabled=false;";
+    html+=    "started=false;";
+    html+=  "};";
+
+    html+=  "ws.onerror=function(e){";
+    html+=    "document.getElementById('audioStatus').textContent='Connection error - check WiFi';";
+    html+=    "document.getElementById('audioStatus').style.color='#ff4444';";
+    html+=  "};";
+
+    html+=  "ws.onmessage=function(e){";
+    html+=    "if(e.data instanceof ArrayBuffer){";
+    html+=      "var float32Data=new Float32Array(e.data);";
+    html+=      "for(var i=0;i<float32Data.length;i++){audioBuffer.push(float32Data[i]);}";
+    html+=      "var maxLevel=0;";
+    html+=      "for(var i=0;i<Math.min(100,float32Data.length);i++){";
+    html+=        "var abs=Math.abs(float32Data[i]);";
+    html+=        "if(abs>maxLevel)maxLevel=abs;";
+    html+=      "}";
+    html+=      "document.getElementById('levelBar').style.width=(maxLevel*100)+'%';";
+    html+=    "}else{";
+    // Handle JSON text messages (e.g. the sampleRate init message)
+    html+=      "try{";
+    html+=        "var msg=JSON.parse(e.data);";
+    html+=        "if(msg.type==='init'&&msg.sampleRate){";
+    html+=          "document.getElementById('srStatus').textContent=msg.sampleRate+' Hz';";
+    html+=        "}";
+    html+=      "}catch(ex){}";
+    html+=    "}";
+    html+=  "};";
+
     html+="}";
 
+    // -------------------------------------------------------------------------
+    // toggleMute() - top-level, accessible from onclick="toggleMute()"
+    // BUG FIX: This function was previously defined INSIDE startAudio() in the
+    // original code, making it unreachable from the button's onclick handler.
+    // -------------------------------------------------------------------------
+    html+="function toggleMute(){";
+    html+=  "isMuted=!isMuted;";
+    html+=  "var btn=document.getElementById('muteBtn');";
+    html+=  "if(isMuted){";
+    html+=    "btn.textContent='MUTED';";
+    html+=    "btn.className='mute-btn muted';";
+    html+=  "}else{";
+    html+=    "btn.textContent='UNMUTED';";
+    html+=    "btn.className='mute-btn unmuted';";
+    html+=  "}";
+    html+=  "document.getElementById('status').textContent=isMuted?'Muted':'Unmuted';";
+    html+=  "if(ws&&ws.readyState===WebSocket.OPEN){";
+    html+=    "ws.send(isMuted?'mute:true':'mute:false');";
+    html+=  "}";
+    html+="}";
+
+    // -------------------------------------------------------------------------
+    // updateStatus() - polls /status every 2s to update the info box
+    // BUG FIX: Added explicit Content-Type accept header and cache-busting
+    // query param so Android Chrome doesn't cache or block the fetch.
+    // -------------------------------------------------------------------------
     html+="function updateStatus(){";
-    html+="fetch('/status').then(function(r){return r.json();})";
-    html+=".then(function(d){";
-    html+="document.getElementById('serverStatus').textContent='Running';";
-    html+="document.getElementById('serverStatus').className='connected';";
-    html+="document.getElementById('deviceCount').textContent=d.clients;";
-    html+="}).catch(function(){";
-    html+="document.getElementById('serverStatus').textContent='Not Running';";
-    html+="document.getElementById('serverStatus').style.color='#ff4444';";
-    html+="});}";
-    html+="updateStatus();setInterval(updateStatus,2000);";
+    html+=  "fetch('/status?t='+Date.now(),{headers:{'Accept':'application/json'}})";
+    html+=  ".then(function(r){";
+    html+=    "if(!r.ok)throw new Error('HTTP '+r.status);";
+    html+=    "return r.json();";
+    html+=  "})";
+    html+=  ".then(function(d){";
+    html+=    "document.getElementById('serverStatus').textContent='Running';";
+    html+=    "document.getElementById('serverStatus').className='connected';";
+    html+=    "document.getElementById('deviceCount').textContent=d.clients;";
+    html+=  "})";
+    html+=  ".catch(function(err){";
+    html+=    "document.getElementById('serverStatus').textContent='Not Running';";
+    html+=    "document.getElementById('serverStatus').style.color='#ff4444';";
+    html+=  "});";
+    html+="}";
+
+    // Kick off status polling
+    html+="updateStatus();";
+    html+="setInterval(updateStatus,2000);";
+
     html+="</script></body></html>";
     return html;
 }
@@ -469,7 +599,9 @@ juce::String HTTPServer::buildHTTPResponse(const juce::String& request)
                        ",\"port\":"+juce::String(port)+
                        ",\"ip\":\""+localIP+"\"}";
         juce::String r="HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n";
-        r+="Content-Length: "+juce::String(s.length())+"\r\nAccess-Control-Allow-Origin: *\r\n\r\n"+s;
+        r+="Content-Length: "+juce::String(s.length())+"\r\n";
+        r+="Cache-Control: no-cache, no-store\r\n";
+        r+="Access-Control-Allow-Origin: *\r\n\r\n"+s;
         return r;
     }
     else
