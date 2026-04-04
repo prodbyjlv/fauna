@@ -112,3 +112,84 @@ The consultant's hypothesis about the mute switch and WebKit optimization was re
 4. Consider if audio output destination can be forced to speakers
 5. Test on multiple iPhone models and iOS versions
 6. Compare with working web audio apps to understand the difference
+
+---
+
+## Second Fix Attempt: "Prime the Pump" - April 4, 2026
+
+### Consultant's New Analysis
+
+After the first fix attempt failed, the consultant identified a deeper issue:
+
+#### The "Empty Pipe" Optimization
+
+**Problem:** While having 1 input channel prevents the node from being immediately deleted, Safari's CoreAudio engine goes one step further to save battery. It looks at the Web Audio Graph and says: "Okay, this node has an input pipe. But is anything actually flowing into it?"
+
+Because no source was connected to the scriptNode, Safari sees an **empty pipe**. It assumes that if there is zero input, the output must also be zero, so it completely **suspends the onaudioprocess loop** to save CPU.
+
+#### Why Bluetooth Worked
+
+When Bluetooth connects, iOS suddenly switches audio routes from the internal speaker to A2DP. When this happens, iOS completely **destroys and rebuilds the CoreAudio graph** at the hardware level. This hardware-level rebuild forces Safari to drop its power-saving optimizations momentarily, accidentally "waking up" the script node.
+
+### The New Fix: "Prime the Pump"
+
+To stop Safari from shutting down the ScriptProcessorNode on the internal speaker, we must give it **fake audio to process**. We need to create an invisible, silent OscillatorNode and plug it directly into the ScriptProcessorNode.
+
+This forces continuous data through the pipe, tricking Safari into keeping the audio thread awake on the internal speaker.
+
+### Code Change
+
+Added three lines directly under where scriptNode is created:
+
+```javascript
+scriptNode=audioCtx.createScriptProcessor(4096,1,2);
+
+// THE FINAL IOS FIX: "PRIME THE PUMP"
+// Create a silent dummy oscillator and plug it into the script node.
+// This forces Safari's battery optimizer to keep the process loop awake!
+var dummyOsc=audioCtx.createOscillator();
+dummyOsc.connect(scriptNode);dummyOsc.start(0);
+```
+
+### Logic and Reasoning
+
+1. **Previous fix (1 input channel)** - Prevents immediate deletion of the node, but Safari still sees an empty pipe
+2. **Dummy oscillator** - Provides actual audio data flowing through the pipe
+3. **Continuous flow** - Forces Safari to keep the audio thread awake on the internal speaker
+4. **Theoretical guarantee** - If data is flowing, Safari cannot assume output is zero
+
+The consultant was confident this would work because:
+- The symptoms (Bluetooth works, Speaker is dead) perfectly isolate the issue to Safari's internal power-state management
+- The `<audio>` base64 trick bypasses the physical hardware mute switch
+- This dummyOsc trick bypasses the software CPU optimization
+- Once the valve is forced open, the WebSockets buffer should finally stream out of the bottom speaker
+
+---
+
+## Result
+
+**The fix was implemented and tested - it did NOT solve the iPhone speaker issue.**
+
+### What Still Happens:
+- Audio streams to iPhone (level meter works)
+- Audio plays through Bluetooth headphones
+- Audio does NOT play through iPhone built-in speakers
+- No change in behavior from the previous attempt
+
+### Conclusion:
+Despite the logical reasoning behind the "Prime the Pump" fix, the issue persists. The problem appears to be deeper in iOS audio routing for Web Audio API than initially understood. Both hardware-level (mute switch) and software-level (CPU optimization) workarounds have been attempted without success.
+
+---
+
+## Current Status (April 4, 2026)
+
+All attempts so far:
+| Attempt | Description | Result |
+|---------|-------------|--------|
+| 1 | Original ScriptProcessor approach | ❌ iPhone speakers don't work |
+| 2 | Valid 44-byte WAV + 1 input channel | ❌ iPhone speakers don't work |
+| 3 | "Prime the Pump" - dummy oscillator | ❌ iPhone speakers don't work |
+
+**Audio works through Bluetooth on iPhone, but NOT through built-in speakers.**
+
+This remains an unresolved iOS Web Audio API limitation.

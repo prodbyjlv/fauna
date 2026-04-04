@@ -418,6 +418,8 @@ juce::String HTTPServer::getHTMLPage()
     html+=  "if(audioCtx.state==='suspended'){audioCtx.resume().then(function(){unlockIOSAudio(audioCtx);})}";
     html+=  "else{unlockIOSAudio(audioCtx);}";
     html+=  "scriptNode=audioCtx.createScriptProcessor(4096,1,2);";
+    html+=  "var dummyOsc=audioCtx.createOscillator();";
+    html+=  "dummyOsc.connect(scriptNode);dummyOsc.start(0);";
     html+=  "scriptNode.onaudioprocess=function(e){";
     html+=    "var L=e.outputBuffer.getChannelData(0);";
     html+=    "var R=e.outputBuffer.getChannelData(1);";
