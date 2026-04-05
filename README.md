@@ -1,15 +1,15 @@
-# FAUNA v1.1
+# FAUNA
 
 Audio streaming plugin that sends DAW audio to your phone over WiFi.
 
 ## Installation
 
-1. Download `FAUNA-v1.1.zip` from this page
+1. Download FAUNA-v1.2.zip from this page
 
 2. Extract the zip file
 
-3. Copy the entire `FAUNA.vst3` folder to:
-   `C:\Program Files\Common Files\VST3\`
+3. Copy the entire FAUNA.vst3 folder to:
+   C:\Program Files\Common Files\VST3\
    
    **IMPORTANT:** Copy the entire FAUNA.vst3 folder, not just the contents.
 
