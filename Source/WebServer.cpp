@@ -315,36 +315,49 @@ juce::String HTTPServer::getHTMLPage()
 {
     juce::String html="<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">";
     html+="<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">";
-    html+="<title>FAUNA Audio Stream</title><style>";
-    html+="*{margin:0;padding:0;box-sizing:border-box}";
-    html+="body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;color:white;padding:20px}";
-    html+=".container{background:rgba(255,255,255,0.1);border-radius:20px;padding:40px;text-align:center;backdrop-filter:blur(10px);max-width:400px;width:100%}";
-    html+="h1{font-size:2em;margin-bottom:10px;color:#00d4ff}h2{font-size:1em}";
-    html+=".status{font-size:0.9em;color:#aaa;margin-bottom:30px}";
-    html+=".level-meter{width:100%;height:30px;background:rgba(0,0,0,0.3);border-radius:15px;overflow:hidden;margin-bottom:30px}";
-    html+=".level-bar{height:100%;width:0%;background:linear-gradient(90deg,#00ff88,#00d4ff,#ffaa00,#ff4444);transition:width 0.08s;border-radius:15px}";
-    html+=".mute-btn{padding:20px 60px;font-size:1.5em;border:none;border-radius:15px;cursor:pointer;transition:all 0.3s;font-weight:bold}";
-    html+=".mute-btn.muted{background:#ff4444;color:white}.mute-btn.unmuted{background:#00ff88;color:#1a1a2e}";
-    html+=".connection-status{margin-top:20px;font-size:0.8em;color:#888}";
-    html+=".connected{color:#00ff88}";
-    html+=".info-box{background:rgba(0,0,0,0.2);padding:15px;border-radius:10px;margin-bottom:20px}";
-    html+=".info-box p{margin:5px 0;font-size:0.85em}";
-    html+=".start-btn{padding:15px 40px;font-size:1.2em;background:#00d4ff;color:#1a1a2e;border:none;border-radius:10px;cursor:pointer;margin-bottom:20px;transition:all 0.3s;-webkit-tap-highlight-color:transparent}";
+    html+="<title>FAUNA Audio Stream</title>";
+    html+="<style>";
+    html+="*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}";
+    html+=":root{--bg:#1c1510;--cream:#f0e6d0;--coral:#ff5a46;--green:#4ade80;--dim:rgba(240,230,208,0.35);--card-bg:rgba(240,230,208,0.05);--card-border:rgba(255,90,70,0.2)}";
+    html+="body{background:var(--bg);min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--cream);font-family:'Courier New',monospace;padding:24px 20px;position:relative;overflow-x:hidden}";
+    html+=".watermark{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0}";
+    html+=".container{position:relative;z-index:1;width:100%;max-width:380px;display:flex;flex-direction:column;gap:16px}";
+    html+=".info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}";
+    html+=".info-card{background:var(--card-bg);border:0.5px solid var(--card-border);border-radius:12px;padding:16px}";
+    html+=".info-card .card-label{font-size:9px;letter-spacing:2px;color:var(--coral);opacity:0.8;text-transform:uppercase;margin-bottom:6px}";
+    html+=".info-card .card-value{font-size:13px;color:var(--cream)}";
+    html+=".info-card .card-value.status-ok{color:var(--green)}.info-card .card-value.status-warn{color:var(--coral)}";
+    html+=".level-section{display:flex;flex-direction:column;gap:10px}";
+    html+=".level-label{font-size:9px;letter-spacing:2px;color:var(--coral);opacity:0.8;text-transform:uppercase}";
+    html+=".level-track{width:100%;height:12px;background:rgba(240,230,208,0.08);border-radius:8px;overflow:hidden}";
+    html+=".level-bar{height:100%;width:0%;background:linear-gradient(90deg,var(--coral),var(--cream));border-radius:8px;transition:width 0.07s linear}";
+    html+=".level-bar.muted{background:rgba(240,230,208,0.15)}";
+    html+=".divider{width:100%;height:0.5px;background:linear-gradient(90deg,var(--coral),transparent);opacity:0.4}";
+    html+=".mute-btn{width:100%;padding:24px;font-family:'Courier New',monospace;font-size:14px;font-weight:700;letter-spacing:4px;border-radius:12px;cursor:pointer;transition:opacity 0.15s,transform 0.1s;border:1.5px solid var(--green);background:transparent;color:var(--green)}";
+    html+=".mute-btn.muted{border-color:var(--coral);color:var(--coral)}";
+    html+=".mute-btn:active{transform:scale(0.98);opacity:0.85}";
+    html+=".footer{display:flex;align-items:center;justify-content:center;gap:8px}";
+    html+=".status-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}";
+    html+=".status-dot.disconnected{background:var(--coral);opacity:0.5}";
+    html+=".footer-text{font-size:10px;color:var(--dim)}";
+    html+=".start-btn{width:100%;padding:20px;font-family:'Courier New',monospace;font-size:14px;font-weight:700;letter-spacing:2px;border-radius:12px;cursor:pointer;transition:opacity 0.15s,transform 0.1s;border:1.5px solid var(--coral);background:transparent;color:var(--coral)}";
+    html+=".start-btn:active{transform:scale(0.98);opacity:0.85}";
     html+=".start-btn:disabled{opacity:0.5;cursor:not-allowed}";
     html+="</style></head><body>";
+    html+="<div class=\"watermark\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100%\" height=\"100%\"><defs><pattern id=\"fauna-pattern\" x=\"0\" y=\"0\" width=\"86\" height=\"32\" patternUnits=\"userSpaceOnUse\" patternTransform=\"rotate(-30)\"><text x=\"0\" y=\"22\" font-family=\"Arial,sans-serif\" font-weight=\"900\" font-size=\"18\" fill=\"#ff5a46\" opacity=\"0.08\">FAUNA</text></pattern></defs><rect width=\"100%\" height=\"100%\" fill=\"url(#fauna-pattern)\"/></svg></div>";
     html+="<div class=\"container\">";
-    html+="<h1>FAUNA</h1><p class=\"status\">Audio Streaming Control</p>";
-    html+="<div class=\"info-box\">";
-    html+="<p><strong>Server:</strong> <span id=\"serverStatus\">Checking...</span></p>";
-    html+="<p><strong>Devices:</strong> <span id=\"deviceCount\">0</span></p>";
-    html+="<p><strong>Audio:</strong> <span id=\"audioStatus\">Click Start to begin</span></p>";
-    html+="<p><strong>Sample Rate:</strong> <span id=\"srStatus\">-</span></p>";
-    html+="<p><strong>Buffer:</strong> <span id=\"bufStatus\">-</span></p>";
+    html+="<div class=\"info-grid\">";
+    html+="<div class=\"info-card\"><div class=\"card-label\">Server</div><div class=\"card-value status-ok\" id=\"serverStatus\">Running</div></div>";
+    html+="<div class=\"info-card\"><div class=\"card-label\">Audio</div><div class=\"card-value\" id=\"audioStatus\">Ready</div></div>";
+    html+="<div class=\"info-card\"><div class=\"card-label\">Sample Rate</div><div class=\"card-value\" id=\"srStatus\">-- Hz</div></div>";
+    html+="<div class=\"info-card\"><div class=\"card-label\">Buffer</div><div class=\"card-value\" id=\"bufStatus\">-- frames</div></div>";
     html+="</div>";
+    html+="<div class=\"divider\"></div>";
+    html+="<div class=\"level-section\"><div class=\"level-label\">Level</div><div class=\"level-track\"><div class=\"level-bar\" id=\"levelBar\"></div></div></div>";
+    html+="<div class=\"divider\"></div>";
     html+="<button class=\"start-btn\" id=\"startBtn\" onclick=\"startAudio()\">START AUDIO</button>";
-    html+="<div class=\"level-meter\"><div class=\"level-bar\" id=\"levelBar\"></div></div>";
-    html+="<button class=\"mute-btn unmuted\" id=\"muteBtn\" onclick=\"toggleMute()\">UNMUTED</button>";
-    html+="<p class=\"connection-status\" id=\"status\">Ready</p>";
+    html+="<button class=\"mute-btn\" id=\"muteBtn\" onclick=\"toggleMute()\">UNMUTED</button>";
+    html+="<div class=\"footer\"><div class=\"status-dot\" id=\"statusDot\"></div><span class=\"footer-text\" id=\"footerText\">Ready</span></div>";
     html+="</div>";
     html+="<audio id=\"iosAudio\" playsinline></audio>";
     html+="<script>";
@@ -357,13 +370,13 @@ juce::String HTTPServer::getHTMLPage()
     html+="var ringBuf=new Float32Array(RING_SIZE);";
     html+="var ringWrite=0,ringRead=0;";
 
-    // Sample rates — serverSampleRate set from init message, deviceSampleRate from AudioContext
+    // Sample rates
     html+="var serverSampleRate=0,deviceSampleRate=0;";
 
-    // Linear interpolation resampler phase accumulator (persists across packets)
+    // Resampler phase accumulator
     html+="var resamplerPhase=0.0;";
 
-    // Prebuffer: hold off playback until we have enough frames to be smooth
+    // Prebuffer
     html+="var PREBUFFER_FRAMES=4096;";
     html+="var prebuffering=true;";
 
@@ -395,29 +408,23 @@ juce::String HTTPServer::getHTMLPage()
     html+=  "if(resamplerPhase<0)resamplerPhase=0;";
     html+="}";
 
-    // Unlock iOS audio - valid 44-byte WAV forces Media session (ignores mute switch)
-    html+="function unlockIOSAudio(ctx){";
+    // Unlock iOS audio
+    html+="function unlockIOSAudio(){";
     html+=  "var a=document.getElementById('iosAudio');";
     html+=  "a.src='data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';";
-    html+=  "a.loop=true;a.volume=0.001;a.play().catch(function(e){console.log('Unlock failed',e);});";
+    html+=  "a.loop=true;a.volume=0.001;a.play().catch(function(e){});";
     html+="}";
 
     // Start audio
-    html+="function startAudio(){";
-    html+=  "if(started)return;";
-    html+=  "started=true;";
+    html+="function startAudio(){if(started)return;started=true;";
     html+=  "document.getElementById('startBtn').disabled=true;";
     html+=  "document.getElementById('startBtn').textContent='Connecting...';";
     html+=  "if(navigator.audioSession){navigator.audioSession.type='playback';}";
     html+=  "document.getElementById('audioStatus').textContent='Starting...';";
-    html+=  "try{audioCtx=new(window.AudioContext||window.webkitAudioContext)();}";
-    html+=  "catch(e){document.getElementById('audioStatus').textContent='AudioContext failed: '+e.message;";
-    html+=    "started=false;document.getElementById('startBtn').disabled=false;";
-    html+=    "document.getElementById('startBtn').textContent='START AUDIO';return;}";
+    html+=  "try{audioCtx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){document.getElementById('audioStatus').textContent='Error';document.getElementById('audioStatus').className='card-value status-warn';document.getElementById('startBtn').disabled=false;document.getElementById('startBtn').textContent='START AUDIO';started=false;return;}";
     html+=  "deviceSampleRate=audioCtx.sampleRate;";
-    html+=  "document.getElementById('srStatus').textContent='Device: '+deviceSampleRate+' Hz';";
-    html+=  "if(audioCtx.state==='suspended'){audioCtx.resume().then(function(){unlockIOSAudio(audioCtx);})}";
-    html+=  "else{unlockIOSAudio(audioCtx);}";
+    html+=  "document.getElementById('srStatus').textContent=deviceSampleRate+' Hz';";
+    html+=  "if(audioCtx.state==='suspended'){audioCtx.resume().then(function(){unlockIOSAudio();})}else{unlockIOSAudio();}";
     html+=  "scriptNode=audioCtx.createScriptProcessor(4096,1,2);";
     html+=  "var dummyOsc=audioCtx.createOscillator();";
     html+=  "dummyOsc.connect(scriptNode);dummyOsc.start(0);";
@@ -428,53 +435,32 @@ juce::String HTTPServer::getHTMLPage()
     html+=    "var avail=ringAvailable()/2;";
     html+=    "document.getElementById('bufStatus').textContent=Math.floor(avail)+' frames';";
     html+=    "if(prebuffering){";
-    html+=      "if(avail>=PREBUFFER_FRAMES){prebuffering=false;}";
+    html+=      "if(avail>=PREBUFFER_FRAMES){prebuffering=false;document.getElementById('audioStatus').textContent='Playing';document.getElementById('audioStatus').className='card-value status-ok';}";
     html+=      "else{for(var i=0;i<frames;i++){L[i]=0;R[i]=0;}return;}";
     html+=    "}";
-    html+=    "if(avail<frames){";
-    html+=      "prebuffering=true;";
-    html+=      "for(var i=0;i<frames;i++){L[i]=0;R[i]=0;}return;";
-    html+=    "}";
+    html+=    "if(avail<frames){prebuffering=true;for(var i=0;i<frames;i++){L[i]=0;R[i]=0;}return;}";
     html+=    "for(var i=0;i<frames;i++){L[i]=ringPop();R[i]=ringPop();}";
     html+=  "};";
     html+=  "scriptNode.connect(audioCtx.destination);";
     html+=  "var wsUrl='ws://'+location.hostname+':'+(location.port||'8080');";
-    html+=  "document.getElementById('status').textContent='Connecting to '+wsUrl;";
-    html+=  "try{ws=new WebSocket(wsUrl);}";
-    html+=  "catch(e){document.getElementById('audioStatus').textContent='WS failed: '+e.message;";
-    html+=    "started=false;document.getElementById('startBtn').disabled=false;";
-    html+=    "document.getElementById('startBtn').textContent='START AUDIO';return;}";
+    html+=  "try{ws=new WebSocket(wsUrl);}catch(e){document.getElementById('audioStatus').textContent='Error';document.getElementById('audioStatus').className='card-value status-warn';started=false;return;}";
     html+=  "ws.binaryType='arraybuffer';";
-    html+=  "ws.onopen=function(){";
-    html+=    "document.getElementById('startBtn').textContent='Streaming...';";
-    html+=    "document.getElementById('audioStatus').textContent='Buffering...';";
-    html+=    "document.getElementById('status').textContent='Connected';};";
-    html+=  "ws.onclose=function(e){";
-    html+=    "document.getElementById('audioStatus').textContent='Disconnected ('+e.code+')';";
-    html+=    "document.getElementById('audioStatus').style.color='#ff4444';";
-    html+=    "document.getElementById('startBtn').textContent='START AUDIO';";
-    html+=    "document.getElementById('startBtn').disabled=false;started=false;};";
-    html+=  "ws.onerror=function(){";
-    html+=    "document.getElementById('audioStatus').textContent='Connection error - check WiFi';";
-    html+=    "document.getElementById('audioStatus').style.color='#ff4444';};";
+    html+=  "ws.onopen=function(){document.getElementById('startBtn').textContent='Streaming...';document.getElementById('audioStatus').textContent='Buffering...';document.getElementById('footerText').textContent='Connected';};";
+    html+=  "ws.onclose=function(){document.getElementById('audioStatus').textContent='Disconnected';document.getElementById('audioStatus').className='card-value status-warn';document.getElementById('footerText').textContent='Disconnected';document.getElementById('startBtn').disabled=false;document.getElementById('startBtn').textContent='START AUDIO';started=false;};";
+    html+=  "ws.onerror=function(){document.getElementById('audioStatus').textContent='Error';document.getElementById('audioStatus').className='card-value status-warn';document.getElementById('startBtn').disabled=false;document.getElementById('startBtn').textContent='START AUDIO';started=false;};";
     html+=  "ws.onmessage=function(e){";
     html+=    "if(e.data instanceof ArrayBuffer){";
     html+=      "var d=new Float32Array(e.data);";
     html+=      "resampleAndPush(d);";
-    html+=      "if(!prebuffering){";
-    html+=        "document.getElementById('audioStatus').textContent='Playing!';";
-    html+=        "document.getElementById('audioStatus').className='connected';}";
-    html+=      "var mx=0;";
-    html+=      "for(var i=0;i<Math.min(100,d.length);i++){var a=Math.abs(d[i]);if(a>mx)mx=a;}";
+    html+=      "if(!prebuffering){document.getElementById('audioStatus').textContent='Playing';document.getElementById('audioStatus').className='card-value status-ok';}";
+    html+=      "var mx=0;for(var i=0;i<Math.min(100,d.length);i++){var a=Math.abs(d[i]);if(a>mx)mx=a;}";
     html+=      "document.getElementById('levelBar').style.width=(mx*100)+'%';";
     html+=    "}else{";
     html+=      "try{var msg=JSON.parse(e.data);";
     html+=        "if(msg.type==='init'&&msg.sampleRate){";
     html+=          "serverSampleRate=msg.sampleRate;";
-    html+=          "var match=serverSampleRate===deviceSampleRate;";
-    html+=          "document.getElementById('srStatus').textContent=";
-    html+=            "'Server: '+serverSampleRate+' / Device: '+deviceSampleRate+' Hz';";
-    html+=          "document.getElementById('srStatus').style.color=match?'#00ff88':'#ffaa00';";
+    html+=          "document.getElementById('srStatus').textContent=serverSampleRate+' Hz';";
+    html+=          "document.getElementById('srStatus').style.color=serverSampleRate===deviceSampleRate?'var(--green)':'var(--coral)';";
     html+=        "}}catch(ex){}";
     html+=    "}";
     html+=  "};";
@@ -484,9 +470,9 @@ juce::String HTTPServer::getHTMLPage()
     html+="function toggleMute(){";
     html+=  "isMuted=!isMuted;";
     html+=  "var btn=document.getElementById('muteBtn');";
-    html+=  "if(isMuted){btn.textContent='MUTED';btn.className='mute-btn muted';}";
-    html+=  "else{btn.textContent='UNMUTED';btn.className='mute-btn unmuted';}";
-    html+=  "document.getElementById('status').textContent=isMuted?'Muted':'Unmuted';";
+    html+=  "var bar=document.getElementById('levelBar');";
+    html+=  "if(isMuted){btn.textContent='MUTED';btn.classList.add('muted');bar.style.width='0%';bar.classList.add('muted');}";
+    html+=  "else{btn.textContent='UNMUTED';btn.classList.remove('muted');bar.classList.remove('muted');}";
     html+=  "if(ws&&ws.readyState===WebSocket.OPEN)ws.send(isMuted?'mute:true':'mute:false');";
     html+="}";
 
@@ -496,13 +482,17 @@ juce::String HTTPServer::getHTMLPage()
     html+=  ".then(function(r){if(!r.ok)throw new Error();return r.json();})";
     html+=  ".then(function(d){";
     html+=    "document.getElementById('serverStatus').textContent='Running';";
-    html+=    "document.getElementById('serverStatus').className='connected';";
-    html+=    "document.getElementById('deviceCount').textContent=d.clients;})";
+    html+=    "document.getElementById('serverStatus').className='card-value status-ok';";
+    html+=    "document.getElementById('footerText').textContent='Connected';";
+    html+=    "document.getElementById('statusDot').className='status-dot';})";
     html+=  ".catch(function(){";
-    html+=    "document.getElementById('serverStatus').textContent='Not Running';";
-    html+=    "document.getElementById('serverStatus').style.color='#ff4444';});";
+    html+=    "document.getElementById('serverStatus').textContent='Stopped';";
+    html+=    "document.getElementById('serverStatus').className='card-value status-warn';";
+    html+=    "document.getElementById('footerText').textContent='Disconnected';";
+    html+=    "document.getElementById('statusDot').className='status-dot disconnected';});";
     html+="}";
 
+    // Update status and check if already connected
     html+="updateStatus();setInterval(updateStatus,2000);";
     html+="</script></body></html>";
     return html;

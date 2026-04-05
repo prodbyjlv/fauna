@@ -37,17 +37,22 @@
 **Status:** ✅ WORKING
 
 **Major changes:**
-- Complete UI redesign with new color scheme (warm brown background, cream/coral/green accents)
+- Complete plugin UI redesign with new color scheme (warm brown background, cream/coral/green accents)
 - New 340x400px window size
 - QR code now generates dynamically from URL
 - Diagonal watermark background pattern
 - Updated meta row layout (URL / Port / SR)
 - Green status dot for connected devices
+- Complete mobile browser redesign matching plugin aesthetic
+- Mobile info cards (Server, Audio, Sample Rate, Buffer)
+- START AUDIO button for browser audio policy compliance
+- Level meter visualization
 
 **Files modified:**
 - PluginEditor.h - Complete UI redesign
 - PluginEditor.cpp - New paint methods, dynamic QR generation
 - WebServer.h - Added getSampleRate()
+- WebServer.cpp - New mobile HTML with matching design
 
 ### v1.1.5 - iPhone + Android Support (April 4, 2026)
 
