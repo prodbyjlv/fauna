@@ -194,7 +194,7 @@ Browser showed "CLOSE code:1006"
 3. **Embedded HTML** - getHTMLPage() now serves full mobile page:
    - WebSocket connection for audio
    - AudioContext with scheduled buffer playback
-   - Level meter visualization
+- Level meter visualization (2.5x magnification for better visual feedback)
    - Mute/unmute toggle button
    - Server status display
 
