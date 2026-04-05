@@ -1,5 +1,4 @@
-# FAUNA  
-*Windows Version*
+# FAUNA *Windows Version*
 
 Audio streaming plugin that sends DAW audio to your phone over WiFi.
 
