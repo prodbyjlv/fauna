@@ -1,4 +1,5 @@
-# FAUNA // WINDOWS VERSION
+# FAUNA  
+*Windows Version*
 
 Audio streaming plugin that sends DAW audio to your phone over WiFi.
 
@@ -26,7 +27,7 @@ Audio streaming plugin that sends DAW audio to your phone over WiFi.
 
 3. Make sure your phone is on the same WiFi network as your PC
 
-4. Click START AUDIO on your phone
+4. Click **START AUDIO** on your phone
 
 5. Play audio in your DAW - it will stream to your phone!
 
