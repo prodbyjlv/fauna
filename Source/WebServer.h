@@ -37,6 +37,7 @@ public:
     void writeAudioData(const float* audioData, int numSamples);
     void setLevel(float level) { currentLevel = level; }
     void setSampleRate(double sr) { sampleRate = sr; }
+    double getSampleRate() const { return sampleRate; }
 
 private:
     static DWORD WINAPI serverThreadFunc(LPVOID lpParam);

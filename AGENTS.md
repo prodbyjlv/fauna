@@ -32,6 +32,23 @@
 
 ## Version History
 
+### v1.2 - UI Redesign (April 5, 2026)
+
+**Status:** ✅ WORKING
+
+**Major changes:**
+- Complete UI redesign with new color scheme (warm brown background, cream/coral/green accents)
+- New 340x400px window size
+- QR code now generates dynamically from URL
+- Diagonal watermark background pattern
+- Updated meta row layout (URL / Port / SR)
+- Green status dot for connected devices
+
+**Files modified:**
+- PluginEditor.h - Complete UI redesign
+- PluginEditor.cpp - New paint methods, dynamic QR generation
+- WebServer.h - Added getSampleRate()
+
 ### v1.1.5 - iPhone + Android Support (April 4, 2026)
 
 **Status:** ✅ WORKING
