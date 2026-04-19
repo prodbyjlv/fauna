@@ -1,0 +1,69 @@
+name: Build FAUNA
+
+on:
+  push:
+    branches: [master, mv1]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup CMake
+        uses: cmake/setup-cmak@v4
+        with:
+          version: 3.27
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022"
+
+      - name: Build
+        run: |
+          cmake --build build --config Release
+
+      - name: Find VST3
+        run: |
+          Get-ChildItem -Path build -Filter "*.vst3" -Recurse
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FAUNA-Windows-VST3
+          path: build/FAUNA_artefacts/Release/VST3/FAUNA.vst3
+          retention-days: 30
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup CMake
+        uses: cmake/setup-cmake@v4
+        with:
+          version: 3.27
+
+      - name: Configure macOS
+        run: |
+          cmake -S . -B build -G Xcode \
+            -DJUCE_BUILD_EXAMPLES=OFF
+
+      - name: Build Audio Unit
+        run: |
+          cmake --build build --config Release --target FAUNA_AU
+
+      - name: Find Audio Unit
+        run: |
+          find ~/Library/Developer/Xcode/DerivedData -name "*.component" -type d 2>/dev/null | head -5
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FAUNA-macOS-AU
+          path: |
+            ~/Library/Developer/Xcode/DerivedData/*/Build/Products/Release/FAUNA.component
+          retention-days: 30

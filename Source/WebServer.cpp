@@ -453,7 +453,7 @@ juce::String HTTPServer::getHTMLPage()
     html+=      "var d=new Float32Array(e.data);";
     html+=      "resampleAndPush(d);";
     html+=      "if(!prebuffering){document.getElementById('audioStatus').textContent='Playing';document.getElementById('audioStatus').className='card-value status-ok';}";
-    html+=      "var mx=0;for(var i=0;i<Math.min(100,d.length);i++){var a=Math.abs(d[i]);if(a>mx)mx=a;}";
+    html+=      "var mx=0;for(var i=0;i<Math.min(100,d.length);i++){var a=Math.abs(d[i]);if(a>mx)mx=a;}mx=mx*2.5;if(mx>1)mx=1;";
     html+=      "document.getElementById('levelBar').style.width=(mx*100)+'%';";
     html+=    "}else{";
     html+=      "try{var msg=JSON.parse(e.data);";
