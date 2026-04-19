@@ -1,19 +1,21 @@
-# FAUNA *Windows Version*
+# FAUNA *macOS Version*
 
-Audio streaming plugin that sends DAW audio to your phone over WiFi.
+Audio streaming plugin that sends DAW audio to your Mac over WiFi.
 
 ## Installation
 
-1. Download FAUNA-v1.2.zip from this page
+1. Download FAUNA-macOS.zip from this page
 
 2. Extract the zip file
 
-3. Copy the entire FAUNA.vst3 folder to:
-   C:\\Program Files\\Common Files\\VST3\\
-   
-   **IMPORTANT:** Copy the entire FAUNA.vst3 folder, not just the contents.
+3. Copy the FAUNA.component folder to:
+   ~/Library/Audio/Plug-Ins/Components/
 
-4. Open your DAW (FL Studio, Ableton, etc.)
+   **IMPORTANT:** Copy the entire FAUNA.component folder, not just the contents.
+
+   Note: If the "Audio" or "Plug-Ins" folders don't exist in your Library, create them first.
+
+4. Open your DAW (FL Studio, Logic Pro, Ableton Live, GarageBand, etc.)
 
 5. Scan for new plugins, you should now be able to load FAUNA on any track
 
@@ -24,7 +26,7 @@ Audio streaming plugin that sends DAW audio to your phone over WiFi.
 2. Scan the QR code shown in the plugin with your phone's camera
    (OR type the URL shown in the plugin into your phone's browser)
 
-3. Make sure your phone is on the same WiFi network as your PC
+3. Make sure your phone is on the same WiFi network as your Mac
 
 4. Click **START AUDIO** on your phone
 
@@ -32,15 +34,15 @@ Audio streaming plugin that sends DAW audio to your phone over WiFi.
 
 ## Troubleshooting
 
-- Make sure your phone is on the same WiFi network as your PC
+- Make sure your phone is on the same WiFi network as your Mac
 - If no audio plays, try refreshing the page and clicking START again
 - Make sure your DAW is actually playing audio
 
 ## System Requirements
 
-- Windows 10/11
-- VST3 compatible DAW (FL Studio, Ableton, etc.)
-- WiFi network (phone and PC on same network)
+- macOS 10.14 (Mojave) or later
+- Audio Unit compatible DAW (FL Studio, Logic Pro, Ableton Live, GarageBand, etc.)
+- WiFi network (phone and Mac on same network)
 
 ## Notes
 
