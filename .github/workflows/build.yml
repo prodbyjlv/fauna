@@ -12,16 +12,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup CMake
-        uses: cmake/setup-cmak@v4
-        with:
-          version: 3.27
-
       - name: Configure
+        shell: bash
         run: |
           cmake -S . -B build -G "Visual Studio 17 2022"
 
       - name: Build
+        shell: bash
         run: |
           cmake --build build --config Release
 
@@ -42,19 +39,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup CMake
-        uses: cmake/setup-cmake@v4
-        with:
-          version: 3.27
-
       - name: Configure macOS
         run: |
-          cmake -S . -B build -G Xcode \
-            -DJUCE_BUILD_EXAMPLES=OFF
+          cmake -S . -B build -G Xcode
 
       - name: Build Audio Unit
         run: |
-          cmake --build build --config Release --target FAUNA_AU
+          cmake --build build --config Release
 
       - name: Find Audio Unit
         run: |
