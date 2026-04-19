@@ -44,14 +44,25 @@ static juce::String base64Encode(const unsigned char* data, int len)
     return result;
 }
 
+#ifdef _WIN32
 HTTPServer::HTTPServer()
 {
     WSADATA wsaData;
     WSAStartup(MAKEWORD(2,2),&wsaData);
     localIP="127.0.0.1";
 }
+#else
+HTTPServer::HTTPServer()
+{
+    localIP="127.0.0.1";
+}
+#endif
 
+#ifdef _WIN32
 HTTPServer::~HTTPServer() { stop(); WSACleanup(); }
+#else
+HTTPServer::~HTTPServer() { stop(); }
+#endif
 
 void HTTPServer::detectLocalIP()
 {
@@ -73,8 +84,14 @@ bool HTTPServer::start(int targetPort)
     if(serverSocket==INVALID_SOCKET){OutputDebugString("FAUNA: Failed to create socket\n");return false;}
     running=true;
     detectLocalIP();
+    
+#ifdef _WIN32
     serverThreadHandle=CreateThread(NULL,0,serverThreadFunc,this,0,NULL);
-    if(serverThreadHandle==NULL){running=false;closesocket(serverSocket);serverSocket=INVALID_SOCKET;return false;}
+    if(serverThreadHandle==NULL){running=false;CLOSE_SOCKET(serverSocket);serverSocket=INVALID_SOCKET;return false;}
+#else
+    serverThreadHandle = std::thread(serverThreadFunc, this);
+#endif
+    
     OutputDebugString(("FAUNA: Server on "+localIP+":"+juce::String(port)+"\n").toUTF8());
     return true;
 }
@@ -82,32 +99,56 @@ bool HTTPServer::start(int targetPort)
 void HTTPServer::stop()
 {
     running=false;
+    
+#ifdef _WIN32
     Sleep(50);
-    if(serverSocket!=INVALID_SOCKET){shutdown(serverSocket,SD_BOTH);closesocket(serverSocket);serverSocket=INVALID_SOCKET;}
+#else
+    usleep(50000);
+#endif
+
+    if(serverSocket!=INVALID_SOCKET){shutdown(serverSocket,SHUT_RDWR);CLOSE_SOCKET(serverSocket);serverSocket=INVALID_SOCKET;}
+    
+#ifdef _WIN32
     if(serverThreadHandle!=NULL){
         if(WaitForSingleObject(serverThreadHandle,2000)==WAIT_TIMEOUT) TerminateThread(serverThreadHandle,0);
         CloseHandle(serverThreadHandle); serverThreadHandle=NULL;
     }
+#else
+    if(serverThreadHandle.joinable()){
+        serverThreadHandle.join();
+    }
+#endif
+
     juce::ScopedLock lock(clientsLock);
-    for(auto& c:audioClients) if(c.socket!=INVALID_SOCKET){shutdown(c.socket,SD_BOTH);closesocket(c.socket);c.socket=INVALID_SOCKET;}
+    for(auto& c:audioClients) if(c.socket!=INVALID_SOCKET){shutdown(c.socket,SHUT_RDWR);CLOSE_SOCKET(c.socket);c.socket=INVALID_SOCKET;}
     audioClients.clear();
     connectedClientCount.store(0);
 }
 
+#ifdef _WIN32
 DWORD WINAPI HTTPServer::serverThreadFunc(LPVOID p){return ((HTTPServer*)p)->serverThread();}
+#else
+void* HTTPServer::serverThreadFunc(void* p){((HTTPServer*)p)->serverThread(); return nullptr;}
+#endif
 
 DWORD HTTPServer::serverThread()
 {
+#ifdef _WIN32
     DWORD timeout=100;
     setsockopt(serverSocket,SOL_SOCKET,SO_RCVTIMEO,(const char*)&timeout,sizeof(timeout));
+#else
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 100000;
+#endif
 
     while(running && serverSocket!=INVALID_SOCKET)
     {
-        sockaddr_in ca; int cl=sizeof(ca);
-        SOCKET cs=accept(serverSocket,(sockaddr*)&ca,&cl);
+        sockaddr_in ca; socklen_t cl=sizeof(ca);
+        SocketType cs=accept(serverSocket,(sockaddr*)&ca,&cl);
         if(cs!=INVALID_SOCKET) handleClient(cs);
 
-        juce::Array<SOCKET> socketsToCheck;
+        juce::Array<SocketType> socketsToCheck;
         {
             juce::ScopedLock lock(clientsLock);
             for(int i=0;i<audioClients.size();++i)
@@ -116,11 +157,20 @@ DWORD HTTPServer::serverThread()
 
         for(int i=0;i<socketsToCheck.size();++i)
         {
-            SOCKET s=socketsToCheck[i];
+            SocketType s=socketsToCheck[i];
             if(s==INVALID_SOCKET) continue;
+            
+#ifdef _WIN32
             fd_set rs; FD_ZERO(&rs); FD_SET(s,&rs);
             TIMEVAL tv={0,0};
             int r=select(0,&rs,nullptr,nullptr,&tv);
+#else
+            fd_set rs;
+            FD_ZERO(&rs);
+            FD_SET(s, &rs);
+            int r = select(s + 1, &rs, nullptr, nullptr, &timeout);
+#endif
+            
             if(r>0)
             {
                 juce::ScopedLock lock(clientsLock);
@@ -152,22 +202,22 @@ DWORD HTTPServer::serverThread()
     return 0;
 }
 
-SOCKET HTTPServer::createServerSocket(int p)
+SocketType HTTPServer::createServerSocket(int p)
 {
-    SOCKET s=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
+    SocketType s=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
     if(s==INVALID_SOCKET) return INVALID_SOCKET;
     int opt=1; setsockopt(s,SOL_SOCKET,SO_REUSEADDR,(const char*)&opt,sizeof(opt));
     sockaddr_in addr; addr.sin_family=AF_INET; addr.sin_addr.s_addr=INADDR_ANY; addr.sin_port=htons((u_short)p);
-    if(bind(s,(sockaddr*)&addr,sizeof(addr))==SOCKET_ERROR){closesocket(s);return INVALID_SOCKET;}
-    if(listen(s,5)==SOCKET_ERROR){closesocket(s);return INVALID_SOCKET;}
+    if(bind(s,(sockaddr*)&addr,sizeof(addr))==-1){CLOSE_SOCKET(s);return INVALID_SOCKET;}
+    if(listen(s,5)==-1){CLOSE_SOCKET(s);return INVALID_SOCKET;}
     return s;
 }
 
-void HTTPServer::handleClient(SOCKET clientSocket)
+void HTTPServer::handleClient(SocketType clientSocket)
 {
     char buffer[8192];
     int bytes=recv(clientSocket,buffer,sizeof(buffer)-1,0);
-    if(bytes<=0){closesocket(clientSocket);return;}
+    if(bytes<=0){CLOSE_SOCKET(clientSocket);return;}
     buffer[bytes]='\0';
     juce::String request(buffer);
 
@@ -175,7 +225,7 @@ void HTTPServer::handleClient(SOCKET clientSocket)
     {
         {
             juce::ScopedLock lock(clientsLock);
-            if(audioClients.size()>=2){closesocket(clientSocket);return;}
+            if(audioClients.size()>=2){CLOSE_SOCKET(clientSocket);return;}
         }
         const char* kp=strstr(buffer,"Sec-WebSocket-Key:");
         juce::String wsKey="dGhlIHNhbXBsZSBub25jZQ==";
@@ -188,15 +238,22 @@ void HTTPServer::handleClient(SOCKET clientSocket)
         juce::String resp="HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: "+acceptKey+"\r\n\r\n";
         send(clientSocket,resp.toUTF8(),resp.length(),0);
 
+#ifdef _WIN32
         u_long nb=1; ioctlsocket(clientSocket,FIONBIO,&nb);
         int sb=256*1024; setsockopt(clientSocket,SOL_SOCKET,SO_SNDBUF,(const char*)&sb,sizeof(sb));
+#else
+        int flags = fcntl(clientSocket, F_GETFL, 0);
+        fcntl(clientSocket, F_SETFL, flags | O_NONBLOCK);
+        int sb = 256 * 1024;
+        setsockopt(clientSocket, SOL_SOCKET, SO_SNDBUF, &sb, sizeof(sb));
+#endif
 
         AudioClient client;
         client.socket=clientSocket; client.isWebSocket=true;
         client.muted=false; client.lastPingTime=0;
         client.sampleRateSent=false;
 
-        sockaddr_in addr; int al=sizeof(addr);
+        sockaddr_in addr; socklen_t al=sizeof(addr);
         if(getpeername(clientSocket,(sockaddr*)&addr,&al)==0){
             char ip[INET_ADDRSTRLEN]; inet_ntop(AF_INET,&addr.sin_addr,ip,INET_ADDRSTRLEN);
             client.ipAddress=ip;
@@ -210,7 +267,7 @@ void HTTPServer::handleClient(SOCKET clientSocket)
     {
         juce::String r=buildHTTPResponse(request);
         send(clientSocket,r.toUTF8(),r.length(),0);
-        closesocket(clientSocket);
+        CLOSE_SOCKET(clientSocket);
     }
 }
 
@@ -218,9 +275,17 @@ void HTTPServer::handleWebSocketClient(AudioClient& client)
 {
     char buffer[8192];
     int bytes=recv(client.socket,buffer,sizeof(buffer),0);
+    
+#ifdef _WIN32
     if(bytes==0||(bytes<0&&WSAGetLastError()!=WSAEWOULDBLOCK)){
-        closesocket(client.socket); client.socket=INVALID_SOCKET; return;
+        CLOSE_SOCKET(client.socket); client.socket=INVALID_SOCKET; return;
     }
+#else
+    if(bytes == 0 || (bytes < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
+        CLOSE_SOCKET(client.socket); client.socket = INVALID_SOCKET; return;
+    }
+#endif
+    
     if(bytes<2) return;
     unsigned char opcode=buffer[0]&0x0F;
     bool masked=(buffer[1]&0x80)!=0;
@@ -233,7 +298,7 @@ void HTTPServer::handleWebSocketClient(AudioClient& client)
         juce::String msg(d,dl);
         if(msg.contains("mute")) client.muted=msg.contains("true");
     }
-    else if(opcode==0x08){sendWebSocketFrame(client.socket,nullptr,0,0x08);closesocket(client.socket);client.socket=INVALID_SOCKET;}
+    else if(opcode==0x08){sendWebSocketFrame(client.socket,nullptr,0,0x08);CLOSE_SOCKET(client.socket);client.socket=INVALID_SOCKET;}
     else if(opcode==0x09){
         char pp[125]; int pl=0;
         if(plen>0&&plen<=125&&bytes>hlen){pl=(int)plen;memcpy(pp,buffer+hlen,pl);if(masked){char* mk=buffer+hlen-4;for(int i=0;i<pl;i++)pp[i]^=mk[i%4];}}
@@ -287,7 +352,7 @@ void HTTPServer::writeAudioData(const float* audioData, int numSamples)
     broadcastAudio(audioData,numSamples);
 }
 
-void HTTPServer::sendWebSocketFrame(SOCKET socket, const char* data, int length, int opcode)
+void HTTPServer::sendWebSocketFrame(SocketType socket, const char* data, int length, int opcode)
 {
     if(socket==INVALID_SOCKET) return;
     int hlen=2;
@@ -362,137 +427,121 @@ juce::String HTTPServer::getHTMLPage()
     html+="<audio id=\"iosAudio\" playsinline></audio>";
     html+="<script>";
 
-    // Global state
     html+="var isMuted=false,ws=null,audioCtx=null,scriptNode=null,started=false;";
-
-    // Ring buffer — 2 seconds at 48kHz stereo = 192000 floats
     html+="var RING_SIZE=192000;";
     html+="var ringBuf=new Float32Array(RING_SIZE);";
     html+="var ringWrite=0,ringRead=0;";
-
-    // Sample rates
     html+="var serverSampleRate=0,deviceSampleRate=0;";
-
-    // Resampler phase accumulator
     html+="var resamplerPhase=0.0;";
-
-    // Prebuffer
     html+="var PREBUFFER_FRAMES=4096;";
     html+="var prebuffering=true;";
 
-    // Ring buffer helpers
     html+="function ringAvailable(){var a=ringWrite-ringRead;if(a<0)a+=RING_SIZE;return a;}";
     html+="function ringPush(f){ringBuf[ringWrite]=f;ringWrite=(ringWrite+1)%RING_SIZE;}";
     html+="function ringPop(){var f=ringBuf[ringRead];ringRead=(ringRead+1)%RING_SIZE;return f;}";
 
-    // Resample and push with linear interpolation
     html+="function resampleAndPush(data){";
-    html+=  "if(serverSampleRate===0||deviceSampleRate===0||serverSampleRate===deviceSampleRate){";
-    html+=    "for(var i=0;i<data.length;i++)ringPush(data[i]);";
-    html+=    "return;";
-    html+=  "}";
-    html+=  "var ratio=serverSampleRate/deviceSampleRate;";
-    html+=  "var numInputFrames=data.length/2;";
-    html+=  "while(resamplerPhase<numInputFrames){";
-    html+=    "var idx=Math.floor(resamplerPhase);";
-    html+=    "var frac=resamplerPhase-idx;";
-    html+=    "var curL=data[idx*2],curR=data[idx*2+1];";
-    html+=    "var ni=idx+1;";
-    html+=    "var nL=(ni*2<data.length)?data[ni*2]:curL;";
-    html+=    "var nR=(ni*2+1<data.length)?data[ni*2+1]:curR;";
-    html+=    "ringPush(curL+(nL-curL)*frac);";
-    html+=    "ringPush(curR+(nR-curR)*frac);";
-    html+=    "resamplerPhase+=ratio;";
-    html+=  "}";
-    html+=  "resamplerPhase-=numInputFrames;";
-    html+=  "if(resamplerPhase<0)resamplerPhase=0;";
+    html+="if(serverSampleRate===0||deviceSampleRate===0||serverSampleRate===deviceSampleRate){";
+    html+="for(var i=0;i<data.length;i++)ringPush(data[i]);";
+    html+="return;";
+    html+="}";
+    html+="var ratio=serverSampleRate/deviceSampleRate;";
+    html+="var numInputFrames=data.length/2;";
+    html+="while(resamplerPhase<numInputFrames){";
+    html+="var idx=Math.floor(resamplerPhase);";
+    html+="var frac=resamplerPhase-idx;";
+    html+="var curL=data[idx*2],curR=data[idx*2+1];";
+    html+="var ni=idx+1;";
+    html+="var nL=(ni*2<data.length)?data[ni*2]:curL;";
+    html+="var nR=(ni*2+1<data.length)?data[ni*2+1]:curR;";
+    html+="ringPush(curL+(nL-curL)*frac);";
+    html+="ringPush(curR+(nR-curR)*frac);";
+    html+="resamplerPhase+=ratio;";
+    html+="}";
+    html+="resamplerPhase-=numInputFrames;";
+    html+="if(resamplerPhase<0)resamplerPhase=0;";
     html+="}";
 
-    // Unlock iOS audio
     html+="function unlockIOSAudio(){";
-    html+=  "var a=document.getElementById('iosAudio');";
-    html+=  "a.src='data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';";
-    html+=  "a.loop=true;a.volume=0.001;a.play().catch(function(e){});";
+    html+="var a=document.getElementById('iosAudio');";
+    html+="a.src='data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';";
+    html+="a.loop=true;a.volume=0.001;a.play().catch(function(e){});";
     html+="}";
 
-    // Start audio
     html+="function startAudio(){if(started)return;started=true;";
-    html+=  "document.getElementById('startBtn').disabled=true;";
-    html+=  "document.getElementById('startBtn').textContent='Connecting...';";
-    html+=  "if(navigator.audioSession){navigator.audioSession.type='playback';}";
-    html+=  "document.getElementById('audioStatus').textContent='Starting...';";
-    html+=  "try{audioCtx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){document.getElementById('audioStatus').textContent='Error';document.getElementById('audioStatus').className='card-value status-warn';document.getElementById('startBtn').disabled=false;document.getElementById('startBtn').textContent='START AUDIO';started=false;return;}";
-    html+=  "deviceSampleRate=audioCtx.sampleRate;";
-    html+=  "document.getElementById('srStatus').textContent=deviceSampleRate+' Hz';";
-    html+=  "if(audioCtx.state==='suspended'){audioCtx.resume().then(function(){unlockIOSAudio();})}else{unlockIOSAudio();}";
-    html+=  "scriptNode=audioCtx.createScriptProcessor(4096,1,2);";
-    html+=  "var dummyOsc=audioCtx.createOscillator();";
-    html+=  "dummyOsc.connect(scriptNode);dummyOsc.start(0);";
-    html+=  "scriptNode.onaudioprocess=function(e){";
-    html+=    "var L=e.outputBuffer.getChannelData(0);";
-    html+=    "var R=e.outputBuffer.getChannelData(1);";
-    html+=    "var frames=L.length;";
-    html+=    "var avail=ringAvailable()/2;";
-    html+=    "document.getElementById('bufStatus').textContent=Math.floor(avail)+' frames';";
-    html+=    "if(prebuffering){";
-    html+=      "if(avail>=PREBUFFER_FRAMES){prebuffering=false;document.getElementById('audioStatus').textContent='Playing';document.getElementById('audioStatus').className='card-value status-ok';}";
-    html+=      "else{for(var i=0;i<frames;i++){L[i]=0;R[i]=0;}return;}";
-    html+=    "}";
-    html+=    "if(avail<frames){prebuffering=true;for(var i=0;i<frames;i++){L[i]=0;R[i]=0;}return;}";
-    html+=    "for(var i=0;i<frames;i++){L[i]=ringPop();R[i]=ringPop();}";
-    html+=  "};";
-    html+=  "scriptNode.connect(audioCtx.destination);";
-    html+=  "var wsUrl='ws://'+location.hostname+':'+(location.port||'8080');";
-    html+=  "try{ws=new WebSocket(wsUrl);}catch(e){document.getElementById('audioStatus').textContent='Error';document.getElementById('audioStatus').className='card-value status-warn';started=false;return;}";
-    html+=  "ws.binaryType='arraybuffer';";
-    html+=  "ws.onopen=function(){document.getElementById('startBtn').textContent='Streaming...';document.getElementById('audioStatus').textContent='Buffering...';document.getElementById('footerText').textContent='Connected';};";
-    html+=  "ws.onclose=function(){document.getElementById('audioStatus').textContent='Disconnected';document.getElementById('audioStatus').className='card-value status-warn';document.getElementById('footerText').textContent='Disconnected';document.getElementById('startBtn').disabled=false;document.getElementById('startBtn').textContent='START AUDIO';started=false;};";
-    html+=  "ws.onerror=function(){document.getElementById('audioStatus').textContent='Error';document.getElementById('audioStatus').className='card-value status-warn';document.getElementById('startBtn').disabled=false;document.getElementById('startBtn').textContent='START AUDIO';started=false;};";
-    html+=  "ws.onmessage=function(e){";
-    html+=    "if(e.data instanceof ArrayBuffer){";
-    html+=      "var d=new Float32Array(e.data);";
-    html+=      "resampleAndPush(d);";
-    html+=      "if(!prebuffering){document.getElementById('audioStatus').textContent='Playing';document.getElementById('audioStatus').className='card-value status-ok';}";
-    html+=      "var mx=0;for(var i=0;i<Math.min(100,d.length);i++){var a=Math.abs(d[i]);if(a>mx)mx=a;}mx=mx*2.5;if(mx>1)mx=1;";
-    html+=      "document.getElementById('levelBar').style.width=(mx*100)+'%';";
-    html+=    "}else{";
-    html+=      "try{var msg=JSON.parse(e.data);";
-    html+=        "if(msg.type==='init'&&msg.sampleRate){";
-    html+=          "serverSampleRate=msg.sampleRate;";
-    html+=          "document.getElementById('srStatus').textContent=serverSampleRate+' Hz';";
-    html+=          "document.getElementById('srStatus').style.color=serverSampleRate===deviceSampleRate?'var(--green)':'var(--coral)';";
-    html+=        "}}catch(ex){}";
-    html+=    "}";
-    html+=  "};";
+    html+="document.getElementById('startBtn').disabled=true;";
+    html+="document.getElementById('startBtn').textContent='Connecting...';";
+    html+="if(navigator.audioSession){navigator.audioSession.type='playback';}";
+    html+="document.getElementById('audioStatus').textContent='Starting...';";
+    html+="try{audioCtx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){document.getElementById('audioStatus').textContent='Error';document.getElementById('audioStatus').className='card-value status-warn';document.getElementById('startBtn').disabled=false;document.getElementById('startBtn').textContent='START AUDIO';started=false;return;}";
+    html+="deviceSampleRate=audioCtx.sampleRate;";
+    html+="document.getElementById('srStatus').textContent=deviceSampleRate+' Hz';";
+    html+="if(audioCtx.state==='suspended'){audioCtx.resume().then(function(){unlockIOSAudio();})}else{unlockIOSAudio();}";
+    html+="scriptNode=audioCtx.createScriptProcessor(4096,1,2);";
+    html+="var dummyOsc=audioCtx.createOscillator();";
+    html+="dummyOsc.connect(scriptNode);dummyOsc.start(0);";
+    html+="scriptNode.onaudioprocess=function(e){";
+    html+="var L=e.outputBuffer.getChannelData(0);";
+    html+="var R=e.outputBuffer.getChannelData(1);";
+    html+="var frames=L.length;";
+    html+="var avail=ringAvailable()/2;";
+    html+="document.getElementById('bufStatus').textContent=Math.floor(avail)+' frames';";
+    html+="if(prebuffering){";
+    html+="if(avail>=PREBUFFER_FRAMES){prebuffering=false;document.getElementById('audioStatus').textContent='Playing';document.getElementById('audioStatus').className='card-value status-ok';}";
+    html+="else{for(var i=0;i<frames;i++){L[i]=0;R[i]=0;}return;}";
+    html+="}";
+    html+="if(avail<frames){prebuffering=true;for(var i=0;i<frames;i++){L[i]=0;R[i]=0;}return;}";
+    html+="for(var i=0;i<frames;i++){L[i]=ringPop();R[i]=ringPop();}";
+    html+="};";
+    html+="scriptNode.connect(audioCtx.destination);";
+    html+="var wsUrl='ws://'+location.hostname+':'+(location.port||'8080');";
+    html+="try{ws=new WebSocket(wsUrl);}catch(e){document.getElementById('audioStatus').textContent='Error';document.getElementById('audioStatus').className='card-value status-warn';started=false;return;}";
+    html+="ws.binaryType='arraybuffer';";
+    html+="ws.onopen=function(){document.getElementById('startBtn').textContent='Streaming...';document.getElementById('audioStatus').textContent='Buffering...';document.getElementById('footerText').textContent='Connected';};";
+    html+="ws.onclose=function(){document.getElementById('audioStatus').textContent='Disconnected';document.getElementById('audioStatus').className='card-value status-warn';document.getElementById('footerText').textContent='Disconnected';document.getElementById('startBtn').disabled=false;document.getElementById('startBtn').textContent='START AUDIO';started=false;};";
+    html+="ws.onerror=function(){document.getElementById('audioStatus').textContent='Error';document.getElementById('audioStatus').className='card-value status-warn';document.getElementById('startBtn').disabled=false;document.getElementById('startBtn').textContent='START AUDIO';started=false;};";
+    html+="ws.onmessage=function(e){";
+    html+="if(e.data instanceof ArrayBuffer){";
+    html+="var d=new Float32Array(e.data);";
+    html+="resampleAndPush(d);";
+    html+="if(!prebuffering){document.getElementById('audioStatus').textContent='Playing';document.getElementById('audioStatus').className='card-value status-ok';}";
+    html+="var mx=0;for(var i=0;i<Math.min(100,d.length);i++){var a=Math.abs(d[i]);if(a>mx)mx=a;}mx=mx*2.5;if(mx>1)mx=1;";
+    html+="document.getElementById('levelBar').style.width=(mx*100)+'%';";
+    html+="}else{";
+    html+="try{var msg=JSON.parse(e.data);";
+    html+="if(msg.type==='init'&&msg.sampleRate){";
+    html+="serverSampleRate=msg.sampleRate;";
+    html+="document.getElementById('srStatus').textContent=serverSampleRate+' Hz';";
+    html+="document.getElementById('srStatus').style.color=serverSampleRate===deviceSampleRate?'var(--green)':'var(--coral)';";
+    html+="}}catch(ex){}";
+    html+="}";
+    html+="};";
     html+="}";
 
-    // Toggle mute
     html+="function toggleMute(){";
-    html+=  "isMuted=!isMuted;";
-    html+=  "var btn=document.getElementById('muteBtn');";
-    html+=  "var bar=document.getElementById('levelBar');";
-    html+=  "if(isMuted){btn.textContent='MUTED';btn.classList.add('muted');bar.style.width='0%';bar.classList.add('muted');}";
-    html+=  "else{btn.textContent='UNMUTED';btn.classList.remove('muted');bar.classList.remove('muted');}";
-    html+=  "if(ws&&ws.readyState===WebSocket.OPEN)ws.send(isMuted?'mute:true':'mute:false');";
+    html+="isMuted=!isMuted;";
+    html+="var btn=document.getElementById('muteBtn');";
+    html+="var bar=document.getElementById('levelBar');";
+    html+="if(isMuted){btn.textContent='MUTED';btn.classList.add('muted');bar.style.width='0%';bar.classList.add('muted');}";
+    html+="else{btn.textContent='UNMUTED';btn.classList.remove('muted');bar.classList.remove('muted');}";
+    html+="if(ws&&ws.readyState===WebSocket.OPEN)ws.send(isMuted?'mute:true':'mute:false');";
     html+="}";
 
-    // Update status
     html+="function updateStatus(){";
-    html+=  "fetch('/status?t='+Date.now(),{headers:{'Accept':'application/json'}})";
-    html+=  ".then(function(r){if(!r.ok)throw new Error();return r.json();})";
-    html+=  ".then(function(d){";
-    html+=    "document.getElementById('serverStatus').textContent='Running';";
-    html+=    "document.getElementById('serverStatus').className='card-value status-ok';";
-    html+=    "document.getElementById('footerText').textContent='Connected';";
-    html+=    "document.getElementById('statusDot').className='status-dot';})";
-    html+=  ".catch(function(){";
-    html+=    "document.getElementById('serverStatus').textContent='Stopped';";
-    html+=    "document.getElementById('serverStatus').className='card-value status-warn';";
-    html+=    "document.getElementById('footerText').textContent='Disconnected';";
-    html+=    "document.getElementById('statusDot').className='status-dot disconnected';});";
+    html+="fetch('/status?t='+Date.now(),{headers:{'Accept':'application/json'}})";
+    html+=".then(function(r){if(!r.ok)throw new Error();return r.json();})";
+    html+=".then(function(d){";
+    html+="document.getElementById('serverStatus').textContent='Running';";
+    html+="document.getElementById('serverStatus').className='card-value status-ok';";
+    html+="document.getElementById('footerText').textContent='Connected';";
+    html+="document.getElementById('statusDot').className='status-dot';})";
+    html+=".catch(function(){";
+    html+="document.getElementById('serverStatus').textContent='Stopped';";
+    html+="document.getElementById('serverStatus').className='card-value status-warn';";
+    html+="document.getElementById('footerText').textContent='Disconnected';";
+    html+="document.getElementById('statusDot').className='status-dot disconnected';});";
     html+="}";
 
-    // Update status and check if already connected
     html+="updateStatus();setInterval(updateStatus,2000);";
     html+="</script></body></html>";
     return html;

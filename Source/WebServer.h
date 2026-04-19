@@ -1,14 +1,35 @@
 #pragma once
+
 #include <JuceHeader.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
+
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #pragma comment(lib, "ws2_32.lib")
+#else
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+    #include <arpa/inet.h>
+    #include <unistd.h>
+    #include <fcntl.h>
+    #include <thread>
+#endif
+
 #include <atomic>
-#pragma comment(lib, "ws2_32.lib")
+
+#ifdef _WIN32
+    using SocketType = SOCKET;
+    #define CLOSE_SOCKET closesocket
+#else
+    using SocketType = int;
+    #define CLOSE_SOCKET close
+    #define INVALID_SOCKET (-1)
+#endif
 
 class AudioClient
 {
 public:
-    SOCKET socket = INVALID_SOCKET;
+    SocketType socket = INVALID_SOCKET;
     bool muted = false;
     juce::String ipAddress;
     bool isWebSocket = false;
@@ -40,15 +61,19 @@ public:
     double getSampleRate() const { return sampleRate; }
 
 private:
+#ifdef _WIN32
     static DWORD WINAPI serverThreadFunc(LPVOID lpParam);
+#else
+    static void* serverThreadFunc(void* lpParam);
+#endif
     DWORD serverThread();
-    SOCKET createServerSocket(int port);
-    void handleClient(SOCKET clientSocket);
+    SocketType createServerSocket(int port);
+    void handleClient(SocketType clientSocket);
     void handleWebSocketClient(AudioClient& client);
     juce::String buildHTTPResponse(const juce::String& request);
     juce::String getHTMLPage();
     juce::String generateWebSocketKey(const char* key);
-    void sendWebSocketFrame(SOCKET socket, const char* data, int length, int opcode);
+    void sendWebSocketFrame(SocketType socket, const char* data, int length, int opcode);
     void broadcastAudio(const float* audioData, int numSamples);
     void sendSampleRateMessage(AudioClient& client);
 
@@ -58,8 +83,12 @@ private:
     juce::String localIP;
     double sampleRate = 44100.0;
 
-    SOCKET serverSocket = INVALID_SOCKET;
+    SocketType serverSocket = INVALID_SOCKET;
+#ifdef _WIN32
     HANDLE serverThreadHandle = NULL;
+#else
+    std::thread serverThreadHandle;
+#endif
 
     juce::Array<AudioClient> audioClients;
     juce::CriticalSection clientsLock;
