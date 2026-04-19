@@ -140,7 +140,7 @@ DWORD WINAPI HTTPServer::serverThreadFunc(LPVOID p){return ((HTTPServer*)p)->ser
 void* HTTPServer::serverThreadFunc(void* p){((HTTPServer*)p)->serverThread(); return nullptr;}
 #endif
 
-DWORD HTTPServer::serverThread()
+ThreadReturnType HTTPServer::serverThread()
 {
 #ifdef _WIN32
     DWORD timeout=100;
