@@ -47,17 +47,13 @@ jobs:
         run: |
           cmake --build build --config Release
 
-      - name: Find and copy Audio Unit
+      - name: Find Audio Unit
         run: |
-          COMPONENT=$(find ~/Library/Developer/Xcode/DerivedData -name "FAUNA.component" -type d 2>/dev/null | head -1)
-          echo "Found: $COMPONENT"
-          mkdir -p artifacts
-          cp -r "$COMPONENT" artifacts/
-          ls -la artifacts/
+          find build -name "*.component" -type d 2>/dev/null | head -5
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: FAUNA-macOS-AU
-          path: artifacts/FAUNA.component
+          path: build/FAUNA_AU.component
           retention-days: 30
