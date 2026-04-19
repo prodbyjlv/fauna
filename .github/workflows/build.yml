@@ -55,6 +55,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: FAUNA-macOS-AU
-          path: |
-            ~/Library/Developer/Xcode/DerivedData/*/Build/Products/Release/FAUNA.component
+          path: /Users/runner/Library/Developer/Xcode/DerivedData/*/Build/Products/Release/FAUNA.component
           retention-days: 30
