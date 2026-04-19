@@ -81,12 +81,14 @@ bool HTTPServer::start(int targetPort)
     if(running) return true;
     port=targetPort;
     serverSocket=createServerSocket(port);
-    #ifdef _WIN32
-    DEBUG_OUTPUT(("FAUNA: Failed to create socket\n").toUTF8());
+    if(serverSocket==INVALID_SOCKET){
+#ifdef _WIN32
+        DEBUG_OUTPUT("FAUNA: Failed to create socket\n");
 #else
-    printf("FAUNA: Failed to create socket\n");
+        printf("FAUNA: Failed to create socket\n");
 #endif
-    return false;
+        return false;
+    }
     running=true;
     detectLocalIP();
     
@@ -97,11 +99,11 @@ bool HTTPServer::start(int targetPort)
     serverThreadHandle = std::thread(serverThreadFunc, this);
 #endif
     
-    #ifdef _WIN32
-    DEBUG_OUTPUT(("FAUNA: Server on "+localIP+":"+juce::String(port)+"\n").toUTF8());
-#else
+#ifdef _WIN32
+    DEBUG_OUTPUT("FAUNA: Server on "+localIP+":"+juce::String(port)+"\n");
+    #else
     printf("FAUNA: Server on %s:%d\n", localIP.toUTF8(), port);
-#endif
+    #endif
     return true;
 }
 
@@ -271,7 +273,7 @@ void HTTPServer::handleClient(SocketType clientSocket)
         audioClients.add(client);
         connectedClientCount.store(audioClients.size());
         #ifdef _WIN32
-    DEBUG_OUTPUT(("FAUNA: Client connected. Total: "+juce::String(audioClients.size())+"\n").toUTF8());
+    DEBUG_OUTPUT("FAUNA: Client connected. Total: "+juce::String(audioClients.size())+"\n");
 #else
     printf("FAUNA: Client connected. Total: %d\n", audioClients.size());
 #endif
@@ -325,7 +327,7 @@ void HTTPServer::sendSampleRateMessage(AudioClient& client)
     juce::String msg="{\"type\":\"init\",\"sampleRate\":"+juce::String(sr)+"}";
     sendWebSocketFrame(client.socket,msg.toUTF8(),msg.length(),0x01);
     #ifdef _WIN32
-    DEBUG_OUTPUT(("FAUNA: Init sent, sampleRate="+juce::String(sr)+" Hz\n").toUTF8());
+    DEBUG_OUTPUT("FAUNA: Init sent, sampleRate="+juce::String(sr)+" Hz\n");
 #else
     printf("FAUNA: Init sent, sampleRate=%d Hz\n", sr);
 #endif

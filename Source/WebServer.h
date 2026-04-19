@@ -22,7 +22,7 @@
     #define CLOSE_SOCKET closesocket
     #define SHUTDOWN_BOTH SD_BOTH
     #define GET_SOCKET_ERROR_CODE WSAGetLastError()
-    #define DEBUG_OUTPUT(x) OutputDebugString(x)
+    #define DEBUG_OUTPUT(x) OutputDebugString(juce::String(x).toUTF8())
     using ThreadReturnType = DWORD;
 #else
     using SocketType = int;
