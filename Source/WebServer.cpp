@@ -106,7 +106,7 @@ void HTTPServer::stop()
     usleep(50000);
 #endif
 
-    if(serverSocket!=INVALID_SOCKET){shutdown(serverSocket,SHUT_RDWR);CLOSE_SOCKET(serverSocket);serverSocket=INVALID_SOCKET;}
+    if(serverSocket!=INVALID_SOCKET){shutdown(serverSocket,SHUTDOWN_BOTH);CLOSE_SOCKET(serverSocket);serverSocket=INVALID_SOCKET;}
     
 #ifdef _WIN32
     if(serverThreadHandle!=NULL){
@@ -120,7 +120,7 @@ void HTTPServer::stop()
 #endif
 
     juce::ScopedLock lock(clientsLock);
-    for(auto& c:audioClients) if(c.socket!=INVALID_SOCKET){shutdown(c.socket,SHUT_RDWR);CLOSE_SOCKET(c.socket);c.socket=INVALID_SOCKET;}
+    for(auto& c:audioClients) if(c.socket!=INVALID_SOCKET){shutdown(c.socket,SHUTDOWN_BOTH);CLOSE_SOCKET(c.socket);c.socket=INVALID_SOCKET;}
     audioClients.clear();
     connectedClientCount.store(0);
 }

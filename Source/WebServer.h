@@ -20,9 +20,11 @@
 #ifdef _WIN32
     using SocketType = SOCKET;
     #define CLOSE_SOCKET closesocket
+    #define SHUTDOWN_BOTH SD_BOTH
 #else
     using SocketType = int;
     #define CLOSE_SOCKET close
+    #define SHUTDOWN_BOTH SHUT_RDWR
     #define INVALID_SOCKET (-1)
 #endif
 
