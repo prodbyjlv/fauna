@@ -21,11 +21,17 @@
     using SocketType = SOCKET;
     #define CLOSE_SOCKET closesocket
     #define SHUTDOWN_BOTH SD_BOTH
+    #define GET_SOCKET_ERROR_CODE WSAGetLastError()
+    #define DEBUG_OUTPUT(x) OutputDebugString(x)
+    using ThreadReturnType = DWORD;
 #else
     using SocketType = int;
     #define CLOSE_SOCKET close
     #define SHUTDOWN_BOTH SHUT_RDWR
     #define INVALID_SOCKET (-1)
+    #define GET_SOCKET_ERROR_CODE errno
+    #define DEBUG_OUTPUT(x) printf("%s", x)
+    using ThreadReturnType = void*;
 #endif
 
 class AudioClient
@@ -68,7 +74,7 @@ private:
 #else
     static void* serverThreadFunc(void* lpParam);
 #endif
-    DWORD serverThread();
+    ThreadReturnType serverThread();
     SocketType createServerSocket(int port);
     void handleClient(SocketType clientSocket);
     void handleWebSocketClient(AudioClient& client);
