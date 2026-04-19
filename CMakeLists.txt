@@ -2,7 +2,13 @@ cmake_minimum_required(VERSION 3.27)
 
 project(FAUNA VERSION 1.2)
 
-find_package(JUCE CONFIG REQUIRED HINTS "C:/JLV JUCE/juce-8.0.12-windows/JUCE" NO_DEFAULT_PATH)
+include(FetchContent)
+FetchContent_Declare(
+    JUCE
+    GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
+    GIT_TAG 8.0.12
+)
+FetchContent_MakeAvailable(JUCE)
 
 juce_add_plugin(FAUNA
     FORMATS VST3 AU
